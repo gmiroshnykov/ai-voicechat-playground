@@ -85,6 +85,106 @@
           "store_path": "/nix/store/azpqgrv58akzqkj8fq8kb5dyc2jjk7zk-nodejs-24.2.0"
         }
       }
+    },
+    "sox@latest": {
+      "last_modified": "2025-06-22T15:15:55Z",
+      "resolved": "github:NixOS/nixpkgs/3078b9a9e75f1790e6d6ef9955fdc6a2d1740cc6#sox",
+      "source": "devbox-search",
+      "version": "2021-05-09",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/lb4v74wb0ak48135ylnqkizc7p1vf6r0-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/k54h8l42ijqx2ygckda6vwlnzgm5d5jf-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/xhygngj3bjyb758bvsgi4q9wh3pgc5w9-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/q1k88jya2gjrdlya2bqwgzc04c1vqbmc-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/lb4v74wb0ak48135ylnqkizc7p1vf6r0-sox-unstable-2021-05-09"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/6zf90bls6ld06x6xp8qpjjcax0r2pnfi-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/z9kflncaj188j31nfa4yhvcqxy7indhf-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/zcxq8ysq9zs5nc2ccwyg5dclwdvgan72-sox-unstable-2021-05-09-lib"
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/ya1zfxafc7ll77sd4b1lqfyy54a4ixnd-sox-unstable-2021-05-09-dev"
+            }
+          ],
+          "store_path": "/nix/store/6zf90bls6ld06x6xp8qpjjcax0r2pnfi-sox-unstable-2021-05-09"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/w0288l08xwkzc46v7rv99x7frprr5nil-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/acz9dkjn98gzixjmsmji62q1byxv6c9j-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/k471n5qk6yjwsp998c03rsh7hgp5imrz-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/bp88ss9bgsvs50y7wffw6vxdgyfk4zkd-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/w0288l08xwkzc46v7rv99x7frprr5nil-sox-unstable-2021-05-09"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/rap3dkqxpzmd29w4hdh946ax5adhcd8c-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/zm31sq130l4ycx7nmfz5790zv631r3mg-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/b4m205wb6cn5ghs4pl0rq494qv1zl44v-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/hb78692rjykrvkwcjkk8lslxb0gvfmkw-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/rap3dkqxpzmd29w4hdh946ax5adhcd8c-sox-unstable-2021-05-09"
+        }
+      }
     }
   }
 }
