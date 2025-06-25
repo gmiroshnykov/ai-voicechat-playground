@@ -13,11 +13,13 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
+    "@openai/agents": "^0.0.10",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
     "openai": "^5.7.0",
-    "ws": "^8.18.2"
+    "ws": "^8.18.2",
+    "zod": "^3.25.67"
   }
 }

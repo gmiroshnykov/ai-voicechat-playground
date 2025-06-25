@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 
-require('dotenv').config();
-const { Command } = require('commander');
-const RealtimeTranscriber = require('./lib/realtime-transcriber');
+import 'dotenv/config';
+import { Command } from 'commander';
+import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
+import mic from 'mic';
+
+if (!process.env.OPENAI_API_KEY) {
+  console.error('Please set your OPENAI_API_KEY environment variable');
+  process.exit(1);
+}
 
 const program = new Command();
 
@@ -20,38 +26,60 @@ program
     console.log(`Sample rate: ${sampleRate}Hz, Channels: ${channels}`);
     console.log('Speak into your microphone. Press Ctrl+C to stop.\n');
 
-    const transcriber = new RealtimeTranscriber({
-      sampleRate,
-      channels
+    const agent = new RealtimeAgent({
+      name: 'Transcription Agent',
+      instructions: 'You are a transcription agent. Listen to audio and provide transcription only.'
+    });
+
+    const session = new RealtimeSession(agent, {
+      transport: 'websocket',
+      model: 'gpt-4o-realtime-preview-2025-06-03',
+      config: {
+        turnDetection: {
+          type: 'server_vad',
+        },
+      },
+    });
+
+    // Log transcription events
+    session.transport.on('conversation.item.input_audio_transcription.completed', (event) => {
+      console.log('Transcription:', event.transcript);
     });
 
     try {
-      await transcriber.connect();
+      console.log('Connecting...');
+      await session.connect({ apiKey: process.env.OPENAI_API_KEY });
+      console.log('Connected!');
       
-      // Wait a moment for session to be fully configured
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const micInstance = mic({
+        rate: sampleRate,
+        channels: channels,
+        debug: false,
+        exitOnSilence: 0
+      });
+
+      const micInputStream = micInstance.getAudioStream();
       
-      try {
-        const capture = await transcriber.startMicrophoneCapture();
-        
-        // Handle cleanup on exit
-        process.on('SIGINT', () => {
-          console.log('\nStopping transcription...');
-          capture.stop();
-          transcriber.close();
-          process.exit(0);
-        });
-      } catch (error) {
-        console.error('Failed to start microphone capture:', error.message);
-        console.error('Make sure SoX is installed and microphone permissions are granted');
-        process.exit(1);
-      }
+      micInputStream.on('data', (data) => {
+        session.sendAudio(data);
+      });
+
+      micInputStream.on('error', (err) => {
+        console.error('Microphone error:', err);
+      });
+
+      micInstance.start();
+      
+      // Handle cleanup on exit
+      process.on('SIGINT', () => {
+        console.log('\nStopping transcription...');
+        micInstance.stop();
+        session.close();
+        process.exit(0);
+      });
       
     } catch (error) {
-      console.error('Failed to connect to OpenAI:', error.message);
-      if (!process.env.OPENAI_API_KEY) {
-        console.error('Please set your OPENAI_API_KEY environment variable');
-      }
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });

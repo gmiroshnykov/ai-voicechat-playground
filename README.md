@@ -59,22 +59,23 @@ npm test
 
 ## Architecture
 
-### Core Library (`lib/realtime-transcriber.js`)
+### Core Library (`lib/agents-transcriber.js`)
 
-The `RealtimeTranscriber` class provides a reusable interface for OpenAI's Realtime API:
+The `AgentsTranscriber` class provides a reusable interface for OpenAI's Realtime API using the Agents SDK:
 
 ```javascript
-const RealtimeTranscriber = require('./lib/realtime-transcriber');
+import AgentsTranscriber from './lib/agents-transcriber.js';
 
-const transcriber = new RealtimeTranscriber({
+const transcriber = new AgentsTranscriber({
   sampleRate: 24000,
   channels: 1,
-  model: 'gpt-4o-transcribe',
-  vadType: 'semantic_vad',
+  model: 'gpt-4o-realtime-preview-2025-06-03',
+  vadEagerness: 'medium',
   onTranscriptionDelta: (delta) => console.log(delta),
   onTranscriptionComplete: (transcript) => console.log(`Final: "${transcript}"`)
 });
 
+await transcriber.initialize();
 await transcriber.connect();
 await transcriber.startMicrophoneCapture();
 ```
@@ -93,41 +94,40 @@ await transcriber.startMicrophoneCapture();
 
 ## Configuration Options
 
-### RealtimeTranscriber Options
+### AgentsTranscriber Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `sampleRate` | `24000` | Audio sample rate (Hz) |
 | `channels` | `1` | Number of audio channels |
-| `model` | `'gpt-4o-transcribe'` | OpenAI transcription model |
+| `model` | `'gpt-4o-realtime-preview-2025-06-03'` | OpenAI realtime model |
 | `language` | `'en'` | Transcription language |
-| `vadType` | `'semantic_vad'` | Voice activity detection type |
-| `vadEagerness` | `'high'` | VAD responsiveness level |
+| `vadEagerness` | `'medium'` | VAD responsiveness level |
 
 ### Voice Activity Detection
 
-- **`semantic_vad`** - AI-powered speech boundary detection
-- **`server_vad`** - Traditional silence-based detection
+- **`semantic_vad`** - AI-powered speech boundary detection (automatically configured)
 - **Eagerness levels**: `low`, `medium`, `high`, `auto`
 
 ## API Integration
 
 ### OpenAI Realtime API
 
-The tool uses OpenAI's Realtime API with transcription-only session mode:
+The tool uses OpenAI's Realtime API via the Agents SDK for transcription-focused sessions:
 
-- **WebSocket connection** to `wss://api.openai.com/v1/realtime?intent=transcription`
-- **Transcription session** configuration for pure transcription (no conversation)
+- **Agents SDK** integration with `RealtimeAgent` and `RealtimeSession`
+- **WebSocket transport** for real-time audio streaming
 - **Audio streaming** via `input_audio_buffer.append` events
 - **Real-time deltas** through `conversation.item.input_audio_transcription.delta`
 
 ### Event Flow
 
-1. Connect to WebSocket with transcription intent
-2. Configure transcription session with model and VAD settings
-3. Stream raw PCM16 audio chunks
-4. Receive real-time transcription deltas
-5. Get final transcription results
+1. Initialize transcription agent with focused instructions
+2. Create realtime session with semantic VAD
+3. Connect to OpenAI's realtime API
+4. Stream raw PCM16 audio chunks
+5. Receive real-time transcription deltas
+6. Get final transcription results
 
 ## Testing
 
@@ -148,7 +148,7 @@ Expected output demonstrates streaming transcription with high accuracy.
 ```
 nodejs-mic/
 ├── lib/
-│   └── realtime-transcriber.js    # Core transcription library
+│   └── agents-transcriber.js      # Core transcription library
 ├── main.js                        # Live microphone CLI
 ├── test.js                        # File-based testing
 ├── count.wav                      # Test audio file
@@ -167,7 +167,7 @@ devbox shell  # Includes Node.js and SoX
 
 ### Dependencies
 
-- **`ws`** - WebSocket client for OpenAI API
+- **`@openai/agents`** - OpenAI Agents SDK for Realtime API
 - **`commander`** - CLI argument parsing
 - **`dotenv`** - Environment variable management
 - **SoX** - Audio processing and capture
@@ -192,8 +192,8 @@ devbox shell  # Includes Node.js and SoX
 
 Enable event logging to see all API events:
 ```javascript
-// In lib/realtime-transcriber.js, uncomment:
-console.log('📨 Event:', event.type);
+// In lib/agents-transcriber.js, uncomment:
+console.log('📨 Event:', event);
 ```
 
 ## License
