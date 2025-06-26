@@ -1,1 +1,2 @@
 - Use context7 when looking up API docs
+- Never use whisper-1 model
