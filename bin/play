@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import Speaker from 'speaker';
+import { Command } from 'commander';
 
 function parseWavHeader(buffer) {
   // WAV header structure:
@@ -92,22 +93,25 @@ function playWavFile(filename) {
   speaker.end();
 }
 
-// Command line usage
-const filename = process.argv[2];
-if (!filename) {
-  console.error('Usage: node play.js <wav-file>');
-  console.error('Example: node play.js count.wav');
-  process.exit(1);
-}
+const program = new Command();
 
-if (!fs.existsSync(filename)) {
-  console.error(`File not found: ${filename}`);
-  process.exit(1);
-}
+program
+  .name('play')
+  .description('Play WAV audio files')
+  .version('1.0.0')
+  .argument('<wav-file>', 'WAV file to play')
+  .action((filename) => {
+    if (!fs.existsSync(filename)) {
+      console.error(`File not found: ${filename}`);
+      process.exit(1);
+    }
 
-try {
-  playWavFile(filename);
-} catch (error) {
-  console.error('Error playing file:', error.message);
-  process.exit(1);
-}
+    try {
+      playWavFile(filename);
+    } catch (error) {
+      console.error('Error playing file:', error.message);
+      process.exit(1);
+    }
+  });
+
+program.parse();

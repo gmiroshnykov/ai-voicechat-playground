@@ -1,18 +1,12 @@
 {
-  "name": "nodejs-mic",
+  "name": "ai-voicechat-playground",
   "version": "1.0.0",
   "description": "",
-  "main": "main.js",
   "scripts": {
-    "test": "node test.js",
-    "start": "node main.js"
-  },
-  "bin": {
-    "nodejs-mic": "./main.js"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0",
   "type": "module",
   "dependencies": {
     "@openai/agents": "^0.0.10",
