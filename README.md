@@ -24,7 +24,7 @@ Supports live microphone input, bidirectional voice chat, file-based transcripti
 
 1. **Clone and install dependencies:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/gmiroshnykov/ai-voicechat-playground.git
    cd ai-voicechat-playground
    npm install
    ```
