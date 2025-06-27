@@ -6,6 +6,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/pion/rtp v1.8.18
 	github.com/pion/webrtc/v4 v4.1.2
+	github.com/rs/cors v1.11.1
 )
 
 require (
