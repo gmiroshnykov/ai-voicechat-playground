@@ -1,187 +1,193 @@
 import { useState, useRef, useEffect } from 'react';
-import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
 
 export default function VoiceChatApp() {
     const [isConnected, setIsConnected] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
     const [status, setStatus] = useState({ type: 'disconnected', message: 'Disconnected' });
     const [messages, setMessages] = useState([
-        { type: 'system', text: 'Welcome! Click the call button to start chatting with the AI assistant.', id: 'welcome' }
+        { type: 'system', text: 'Welcome! Click the call button to start chatting with the AI assistant via WebRTC.', id: 'welcome' }
     ]);
     
-    // Keep track of messages by itemId for updates
-    const messagesMapRef = useRef(new Map());
+    const peerRef = useRef(null);
+    const streamRef = useRef(null);
     
-    const sessionRef = useRef(null);
+    // Cleanup connections when component unmounts
+    useEffect(() => {
+        return () => {
+            cleanupConnections();
+        };
+    }, []);
+    
+    const cleanupConnections = () => {
+        if (peerRef.current) {
+            peerRef.current.close();
+            peerRef.current = null;
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+    };
     
     const updateStatus = (type, message) => {
         setStatus({ type, message });
     };
     
     const addMessage = (type, text) => {
-        setMessages(prev => [...prev, { type, text, id: Date.now() }]);
-    };
-    
-    const updateMessageText = (itemId, newText) => {
-        messagesMapRef.current.set(itemId, newText);
-        // Force a re-render by updating the conversation log
-        if (sessionRef.current?.history) {
-            updateConversationLog(sessionRef.current.history);
-        }
-    };
-    
-    const updateConversationLog = (history) => {
-        // Keep the welcome message and add history
-        const welcomeMessage = { type: 'system', text: 'Welcome! Click the call button to start chatting with the AI assistant.', id: 'welcome' };
-        const historyMessages = [];
-        
-        history.forEach((message, index) => {
-            
-            // Extract text from content array - based on reference implementation
-            let text = '';
-            if (message.content && Array.isArray(message.content)) {
-                text = message.content.map(item => {
-                    if (!item || typeof item !== 'object') return '';
-                    if (item.type === 'input_text') return item.text || '';
-                    if (item.type === 'audio') return item.transcript || '';
-                    if (item.type === 'text') return item.text || '';
-                    return '';
-                }).filter(Boolean).join('\n');
-            }
-            
-            // Show messages with content, or "[Transcribing...]" for user messages without text yet
-            if (message.role === 'user') {
-                // Check if we have an updated transcript for this itemId
-                const updatedText = messagesMapRef.current.get(message.itemId);
-                const displayText = updatedText || text || '[Transcribing...]';
-                historyMessages.push({ type: 'user', text: displayText, id: `user-${message.itemId || index}` });
-            } else if (message.role === 'assistant' && text) {
-                historyMessages.push({ type: 'assistant', text, id: `assistant-${message.itemId || index}` });
-            }
-        });
-        
-        setMessages([welcomeMessage, ...historyMessages]);
-    };
-    
-    const getEphemeralToken = async () => {
-        try {
-            const response = await fetch('/api/session', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                throw new Error(errorData.message || `Server error: ${response.status}`);
-            }
-            
-            const tokenData = await response.json();
-            return tokenData;
-        } catch (error) {
-            console.error('Error getting ephemeral token:', error);
-            throw error;
-        }
+        setMessages(prev => [...prev, { type, text, id: `${Date.now()}-${Math.random()}` }]);
     };
     
     const startCall = async () => {
         try {
-            updateStatus('connecting', 'Connecting...');
-            
-            // SDK is now imported directly, no need to check window object
-            
-            // Get ephemeral token from backend
-            const tokenData = await getEphemeralToken();
-            if (!tokenData) {
-                throw new Error('Failed to get session token');
+            // Prevent multiple connection attempts
+            if (isConnecting || isConnected) {
+                console.log('Already connecting or connected');
+                return;
             }
             
-            // Create agent
-            const agent = new RealtimeAgent({
-                name: 'Assistant',
-                instructions: 'You are a helpful AI assistant. Keep responses conversational and concise.',
-                voice: 'alloy'
-            });
+            setIsConnecting(true);
+            updateStatus('connecting', 'Getting microphone access...');
             
-            // Create session with WebRTC transport (default)
-            const session = new RealtimeSession(agent, {
-                model: 'gpt-4o-realtime-preview-2025-06-03'
-            });
-            
-            sessionRef.current = session;
-            
-            // Set up event listeners based on the reference implementation
-            session.on('history_updated', (history) => {
-                updateConversationLog(history);
-            });
-            
-            session.on('history_added', (item) => {
-                // Handle new items being added to history
-                if (item && item.type === 'message') {
-                    // Update the conversation log with the full history to maintain order
-                    if (session.history) {
-                        updateConversationLog(session.history);
-                    }
+            // Get user media first
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 24000
                 }
             });
             
-            // Listen for transport events to get transcription deltas
-            session.on('transport_event', (event) => {
-                switch (event.type) {
-                    case 'conversation.item.input_audio_transcription.completed':
-                        // Update the user message with final transcript
-                        if (event.item_id && event.transcript) {
-                            const finalTranscript = event.transcript === '\n' ? '[inaudible]' : event.transcript;
-                            updateMessageText(event.item_id, finalTranscript);
+            streamRef.current = stream;
+            updateStatus('connecting', 'Setting up WebRTC connection...');
+            
+            // Create native WebRTC peer connection
+            const peer = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ]
+            });
+            
+            peerRef.current = peer;
+            
+            // Add local stream to peer connection
+            stream.getTracks().forEach(track => {
+                peer.addTrack(track, stream);
+            });
+            
+            // Handle incoming streams
+            peer.ontrack = (event) => {
+                console.log('Received echo audio stream from server');
+                const [remoteStream] = event.streams;
+                
+                // Create audio element to play the echoed audio
+                const audioElement = document.createElement('audio');
+                audioElement.srcObject = remoteStream;
+                audioElement.autoplay = true;
+                audioElement.volume = 0.8; // Slightly lower to avoid feedback
+                
+                // Add to page so user can see/control it
+                audioElement.controls = true;
+                audioElement.style.width = '100%';
+                audioElement.style.marginTop = '10px';
+                
+                // Find a container to add it to, or create one
+                const container = document.querySelector('.container') || document.body;
+                container.appendChild(audioElement);
+                
+                addMessage('assistant', 'Echo audio stream started');
+            };
+            
+            // Handle connection state changes
+            peer.onconnectionstatechange = () => {
+                console.log('Connection state:', peer.connectionState);
+                if (peer.connectionState === 'connected') {
+                    setIsConnected(true);
+                    setIsConnecting(false);
+                    updateStatus('connected', 'Connected - Start speaking!');
+                    addMessage('system', 'WebRTC connection established');
+                } else if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
+                    setIsConnected(false);
+                    setIsConnecting(false);
+                    updateStatus('error', 'Connection failed');
+                    addMessage('system', 'Connection failed');
+                }
+            };
+            
+            // Handle ICE connection state changes
+            peer.oniceconnectionstatechange = () => {
+                console.log('ICE connection state:', peer.iceConnectionState);
+            };
+            
+            // Handle signaling state changes
+            peer.onsignalingstatechange = () => {
+                console.log('Signaling state:', peer.signalingState);
+            };
+            
+            // Create offer and set local description
+            const offer = await peer.createOffer({
+                offerToReceiveAudio: true
+            });
+            await peer.setLocalDescription(offer);
+            
+            // Wait for ICE gathering to complete before sending offer
+            await new Promise((resolve) => {
+                if (peer.iceGatheringState === 'complete') {
+                    resolve();
+                } else {
+                    peer.addEventListener('icegatheringstatechange', () => {
+                        if (peer.iceGatheringState === 'complete') {
+                            resolve();
                         }
-                        break;
-                    case 'response.audio_transcript.done':
-                        // Force update the conversation log for assistant messages
-                        if (session.history) {
-                            updateConversationLog(session.history);
-                        }
-                        break;
+                    });
                 }
             });
             
-            session.on('error', (error) => {
-                console.error('Session error:', error);
-                updateStatus('error', `Session error: ${error.message}`);
-                addMessage('system', `Error: ${error.message}`);
+            console.log('Sending complete SDP offer to server via HTTP');
+            updateStatus('connecting', 'Negotiating connection...');
+            
+            // Send complete offer (with ICE candidates) to server via HTTP
+            const response = await fetch('http://localhost:3001/webrtc', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/sdp'
+                },
+                body: peer.localDescription.sdp
             });
             
-            session.on('session_created', () => {
-                // Session created
-            });
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
             
-            session.on('session_updated', () => {
-                // Session configured
-            });
+            const answerSdp = await response.text();
+            const conversationId = response.headers.get('X-Conversation-Id');
             
-            // Connect to OpenAI using ephemeral token
-            await session.connect({ 
-                apiKey: tokenData.client_secret 
-            });
+            console.log('Received SDP answer from server');
+            if (conversationId) {
+                addMessage('system', `Conversation started: ${conversationId}`);
+            }
             
-            setIsConnected(true);
-            updateStatus('connected', 'Connected - Start speaking!');
+            // Set remote description with the answer
+            await peer.setRemoteDescription({
+                type: 'answer',
+                sdp: answerSdp
+            });
             
         } catch (error) {
-            console.error('Failed to start call:', error);
+            console.error('Call setup error:', error);
+            setIsConnecting(false);
             updateStatus('error', `Error: ${error.message}`);
-            setIsConnected(false);
+            addMessage('system', `Error: ${error.message}`);
         }
     };
     
     const endCall = async () => {
         try {
-            if (sessionRef.current) {
-                sessionRef.current.close();
-                sessionRef.current = null;
-            }
-            
+            cleanupConnections();
             setIsConnected(false);
+            setIsConnecting(false);
             updateStatus('disconnected', 'Disconnected');
+            addMessage('system', 'Call ended');
             
         } catch (error) {
             console.error('Error ending call:', error);
@@ -198,7 +204,7 @@ export default function VoiceChatApp() {
     
     return (
         <div className="container">
-            <h1>AI Voice Chat</h1>
+            <h1>AI Voice Chat (WebRTC with HTTP Signaling)</h1>
             <div className="conversation-log">
                 {messages.map((message) => (
                     <div key={message.id} className={`message ${message.type}`}>
@@ -210,8 +216,9 @@ export default function VoiceChatApp() {
                 <button 
                     className={isConnected ? "hangup-button" : "call-button"}
                     onClick={toggleCall}
+                    disabled={isConnecting}
                 >
-                    📞 {isConnected ? 'Hang Up' : 'Call'}
+                    📞 {isConnecting ? 'Connecting...' : isConnected ? 'Hang Up' : 'Call'}
                 </button>
             </div>
             <div className={`status ${status.type}`}>
