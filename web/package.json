@@ -1,25 +1,27 @@
 {
-  "name": "ai-voicechat-web",
-  "version": "1.0.0",
-  "description": "Web version of AI voice chat using OpenAI Agents SDK",
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@openai/agents": "^0.0.10",
-    "next": "^14.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "next": "^15.3.4",
+    "react": "^18",
+    "react-dom": "^18"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "@types/react": "^18.0.0",
-    "@types/react-dom": "^18.0.0",
-    "eslint": "^8.0.0",
-    "eslint-config-next": "^14.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.0",
+    "postcss": "^8",
+    "tailwindcss": "^3",
+    "typescript": "^5"
   }
 }

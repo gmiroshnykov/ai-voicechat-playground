@@ -1,62 +1,67 @@
-# AI Voice Chat - Web Version
+# AI Voice Chat - Web Version (New)
 
-A minimal web implementation of the voice chat using OpenAI's Agents SDK with WebRTC transport.
+A minimal web implementation of a voice chat application that uses WebRTC for audio streaming and a Go server for signaling.
 
 ## Features
 
 - 📞 Simple call/hang up interface
-- 💬 Real-time conversation log
 - 🎙️ WebRTC audio for browser compatibility
-- 🔒 Secure API key handling with ephemeral tokens
-- ⚡ Vite dev server with backend proxy
+- 🚀 Go-based signaling server
+- ✨ Modern UI with Tailwind CSS
 
 ## Setup
 
-1. Install dependencies:
-   ```bash
-   cd web
-   npm install
-   ```
+1.  **Start the Go signaling server**
 
-2. Set up your OpenAI API key:
-   ```bash
-   cp .env.example .env.local
-   # Edit .env.local and add your OPENAI_API_KEY
-   ```
+    Follow the instructions in the `server-go` directory to run the WebRTC signaling server. By default, it runs on `http://localhost:3001`.
 
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
+2.  **Install web client dependencies**
 
-4. Open http://localhost:3000 in your browser
+    ```bash
+    cd web
+    npm install
+    ```
 
-5. Click "Call", grant microphone permissions, and start speaking!
+3.  **Configure the signaling server URL**
+
+    Create a `.env.local` file by copying the example file:
+
+    ```bash
+    cp .env.example .env.local
+    ```
+
+    Edit `.env.local` and set `NEXT_PUBLIC_WEBRTC_URL` to the address of your Go signaling server.
+
+    ```.env
+    NEXT_PUBLIC_WEBRTC_URL=http://localhost:3001/webrtc
+    ```
+
+4.  **Start the development server**
+
+    ```bash
+    npm run dev
+    ```
+
+5.  Open `http://localhost:3000` in your browser.
+
+6.  Click "Call", grant microphone permissions, and start speaking!
 
 ## Architecture
 
-- **Framework**: Next.js full-stack with API routes
-- **Frontend**: React components with OpenAI Agents SDK
-- **Backend**: Next.js API routes for secure API key management
-- **Security**: Uses ephemeral client tokens (no API keys in browser)
-- **Transport**: WebRTC for real-time audio communication
+-   **Framework**: Next.js with React for the frontend
+-   **Styling**: Tailwind CSS
+-   **Signaling**: Go server handles the WebRTC session negotiation (SDP exchange).
+-   **Transport**: WebRTC for real-time, peer-to-peer audio communication.
 
 ## How it works
 
-1. Frontend requests ephemeral token from `/api/session`
-2. Next.js API route generates short-lived client token using your API key
-3. Frontend uses client token to connect to OpenAI Realtime API
-4. WebRTC handles audio input/output automatically
-5. Conversation history updates in real-time
-
-## Development
-
-- Full-stack app: http://localhost:3000 (Next.js)
-- API routes: `/api/*` handled by Next.js serverless functions
+1.  The React frontend captures audio from the user's microphone.
+2.  It sends a WebRTC offer (containing network and media information) to the Go signaling server.
+3.  The Go server receives the offer, sets up a peer connection, and returns an answer.
+4.  The frontend receives the answer, establishing a direct WebRTC connection.
+5.  Audio is streamed directly between the browser and the server.
 
 ## Notes
 
-- Requires microphone permissions
-- Uses `gpt-4o-realtime-preview-2025-06-03` model
-- Voice is set to "alloy"
-- API key never leaves the server
+-   Requires microphone permissions in the browser.
+-   The Go signaling server must be running for the web client to work.
