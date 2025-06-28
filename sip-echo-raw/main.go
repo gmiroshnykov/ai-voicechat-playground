@@ -24,6 +24,7 @@ type EchoSession struct {
 	localPort  int
 	conn       *net.UDPConn
 	done       chan struct{}
+	mutex      sync.RWMutex
 }
 
 var (
@@ -114,42 +115,72 @@ func main() {
 
 		log.Printf("Remote RTP endpoint: %s:%d", remoteIP, remotePort)
 
-		// Set up local RTP echo server
-		session, err := setupEchoSession(remoteIP, remotePort)
-		if err != nil {
-			log.Printf("Failed to setup echo session: %v", err)
-			res := sip.NewResponseFromRequest(req, 500, "Internal Server Error", nil)
-			tx.Respond(res)
-			return
-		}
-
-		// Store session for later cleanup (prevent duplicates)
 		sessionsMutex.Lock()
-		if _, exists := activeSessions[callID]; exists {
-			sessionsMutex.Unlock()
-			log.Printf("Call-ID %s already has an active session, ignoring duplicate INVITE", callID)
-			session.cleanup()
-			return
-		}
-		activeSessions[callID] = session
+		existingSession, sessionExists := activeSessions[callID]
 		sessionsMutex.Unlock()
 
-		// Create SDP response
-		localSDP := createSDPResponse("127.0.0.1", session.localPort)
+		if sessionExists {
+			// This is a re-INVITE, update the existing session
+			log.Printf("Re-INVITE detected for Call-ID %s, updating RTP endpoint", callID)
+			
+			err := existingSession.updateRTPEndpoint(remoteIP, remotePort)
+			if err != nil {
+				log.Printf("Failed to update RTP endpoint: %v", err)
+				res := sip.NewResponseFromRequest(req, 500, "Internal Server Error", nil)
+				tx.Respond(res)
+				return
+			}
 
-		// Create 200 OK response with SDP
-		res := sip.NewResponseFromRequest(req, 200, "OK", []byte(localSDP))
-		res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-		res.AppendHeader(sip.NewHeader("Content-Length", strconv.Itoa(len(localSDP))))
+			// Create SDP response with existing local port
+			localSDP := createSDPResponse("127.0.0.1", existingSession.localPort)
 
-		// Send 200 OK to accept the call
-		if err := tx.Respond(res); err != nil {
-			log.Printf("Failed to send 200 OK: %v", err)
-			session.cleanup()
-			return
+			// Create 200 OK response with SDP
+			res := sip.NewResponseFromRequest(req, 200, "OK", []byte(localSDP))
+			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+			res.AppendHeader(sip.NewHeader("Content-Length", strconv.Itoa(len(localSDP))))
+
+			// Send 200 OK to accept the re-INVITE
+			if err := tx.Respond(res); err != nil {
+				log.Printf("Failed to send 200 OK for re-INVITE: %v", err)
+				return
+			}
+
+			log.Printf("Re-INVITE answered with 200 OK, updated RTP endpoint to %s:%d", remoteIP, remotePort)
+		} else {
+			// This is a new INVITE, create a new session
+			session, err := setupEchoSession(remoteIP, remotePort)
+			if err != nil {
+				log.Printf("Failed to setup echo session: %v", err)
+				res := sip.NewResponseFromRequest(req, 500, "Internal Server Error", nil)
+				tx.Respond(res)
+				return
+			}
+
+			// Store session
+			sessionsMutex.Lock()
+			activeSessions[callID] = session
+			sessionsMutex.Unlock()
+
+			// Create SDP response
+			localSDP := createSDPResponse("127.0.0.1", session.localPort)
+
+			// Create 200 OK response with SDP
+			res := sip.NewResponseFromRequest(req, 200, "OK", []byte(localSDP))
+			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+			res.AppendHeader(sip.NewHeader("Content-Length", strconv.Itoa(len(localSDP))))
+
+			// Send 200 OK to accept the call
+			if err := tx.Respond(res); err != nil {
+				log.Printf("Failed to send 200 OK: %v", err)
+				session.cleanup()
+				sessionsMutex.Lock()
+				delete(activeSessions, callID)
+				sessionsMutex.Unlock()
+				return
+			}
+
+			log.Printf("Call answered with 200 OK, local RTP port: %d", session.localPort)
 		}
-
-		log.Printf("Call answered with 200 OK, local RTP port: %d", session.localPort)
 	})
 
 	server.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
@@ -338,7 +369,9 @@ o=echo 1234567890 1234567890 IN IP4 %s
 s=Echo Session
 c=IN IP4 %s
 t=0 0
-m=audio %d RTP/AVP 0 8
+m=audio %d RTP/AVP 111 9 0 8
+a=rtpmap:111 opus/48000/2
+a=rtpmap:9 G722/8000
 a=rtpmap:0 PCMU/8000
 a=rtpmap:8 PCMA/8000
 a=sendrecv
@@ -377,6 +410,21 @@ func setupEchoSession(remoteIP string, remotePort int) (*EchoSession, error) {
 	go session.echoLoop()
 
 	return session, nil
+}
+
+// Update RTP endpoint for re-INVITE
+func (s *EchoSession) updateRTPEndpoint(remoteIP string, remotePort int) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	newRemoteAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", remoteIP, remotePort))
+	if err != nil {
+		return err
+	}
+
+	s.remoteAddr = newRemoteAddr
+	log.Printf("Updated RTP endpoint to %s for session on port %d", s.remoteAddr, s.localPort)
+	return nil
 }
 
 // RTP echo loop
