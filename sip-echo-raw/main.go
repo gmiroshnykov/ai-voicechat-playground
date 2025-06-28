@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/md5"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -12,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -23,7 +24,7 @@ type EchoSession struct {
 	remoteAddr *net.UDPAddr
 	localPort  int
 	conn       *net.UDPConn
-	done       chan struct{}
+	cancel     context.CancelFunc
 	mutex      sync.RWMutex
 }
 
@@ -43,9 +44,32 @@ func main() {
 	sipPassword := os.Getenv("SIP_PASSWORD")
 	sipServer := os.Getenv("SIP_SERVER")
 	sipPort := os.Getenv("SIP_PORT")
+	advertiseIP := os.Getenv("SIP_ADVERTISE_IP")
 
 	if sipUser == "" || sipPassword == "" || sipServer == "" || sipPort == "" {
 		log.Fatal("SIP credentials must be set")
+	}
+
+	// Always bind to all interfaces, but determine which IP to advertise
+	bindIP := "0.0.0.0"
+
+	// Discover our local IP on the default route interface
+	localIP, err := getDefaultRouteIP()
+	if err != nil {
+		log.Fatal("Failed to get default route IP:", err)
+	}
+
+	var publicIP, sdpIP string
+	if advertiseIP != "" {
+		// Use specific advertise IP for Contact headers, local IP for SDP
+		publicIP = advertiseIP
+		sdpIP = localIP
+		log.Printf("Binding to all interfaces, advertising Contact IP: %s, SDP IP: %s", publicIP, sdpIP)
+	} else {
+		// Use discovered local IP for both Contact and SDP
+		publicIP = localIP
+		sdpIP = localIP
+		log.Printf("Binding to all interfaces, advertising IP: %s", publicIP)
 	}
 
 	// Create User Agent
@@ -55,12 +79,20 @@ func main() {
 	}
 	defer ua.Close()
 
-	// Create client with fixed port - this establishes the transport
-	clientPort := 5070
-	client, err := sipgo.NewClient(ua, sipgo.WithClientHostname("127.0.0.1"), sipgo.WithClientPort(clientPort))
+	// Find an available port first
+	listener, err := net.Listen("tcp", bindIP+":0")
+	if err != nil {
+		log.Fatal("Failed to find available port:", err)
+	}
+	clientPort := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	// Create client with the available port
+	client, err := sipgo.NewClient(ua, sipgo.WithClientHostname(bindIP), sipgo.WithClientPort(clientPort))
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("Client created on %s:%d (advertising %s:%d)", bindIP, clientPort, publicIP, clientPort)
 
 	// Create server using same UA - it will use client's transport
 	server, err := sipgo.NewServer(ua)
@@ -91,14 +123,12 @@ func main() {
 	contactURI := &sip.Uri{
 		Scheme:    "sip",
 		User:      sipUser,
-		Host:      "127.0.0.1",
+		Host:      publicIP,
 		Port:      clientPort,
 		UriParams: sip.HeaderParams{"transport": "tcp"},
 	}
 
-	
-
-	// Set up call handlers BEFORE registering
+	// Set up call handlers BEFORE registering (capture localIP in closure)
 	server.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		callID := req.CallID().Value()
 		log.Printf("Incoming call from %s (Call-ID: %s)", req.From().Address.String(), callID)
@@ -122,7 +152,7 @@ func main() {
 		if sessionExists {
 			// This is a re-INVITE, update the existing session
 			log.Printf("Re-INVITE detected for Call-ID %s, updating RTP endpoint", callID)
-			
+
 			err := existingSession.updateRTPEndpoint(remoteIP, remotePort)
 			if err != nil {
 				log.Printf("Failed to update RTP endpoint: %v", err)
@@ -132,12 +162,11 @@ func main() {
 			}
 
 			// Create SDP response with existing local port
-			localSDP := createSDPResponse("127.0.0.1", existingSession.localPort)
+			localSDP := createSDPResponse(sdpIP, existingSession.localPort, sdpBody)
 
 			// Create 200 OK response with SDP
 			res := sip.NewResponseFromRequest(req, 200, "OK", []byte(localSDP))
 			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-			res.AppendHeader(sip.NewHeader("Content-Length", strconv.Itoa(len(localSDP))))
 
 			// Send 200 OK to accept the re-INVITE
 			if err := tx.Respond(res); err != nil {
@@ -162,12 +191,11 @@ func main() {
 			sessionsMutex.Unlock()
 
 			// Create SDP response
-			localSDP := createSDPResponse("127.0.0.1", session.localPort)
+			localSDP := createSDPResponse(sdpIP, session.localPort, sdpBody)
 
 			// Create 200 OK response with SDP
 			res := sip.NewResponseFromRequest(req, 200, "OK", []byte(localSDP))
 			res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-			res.AppendHeader(sip.NewHeader("Content-Length", strconv.Itoa(len(localSDP))))
 
 			// Send 200 OK to accept the call
 			if err := tx.Respond(res); err != nil {
@@ -205,15 +233,20 @@ func main() {
 		// ACK does not require a response from the server
 	})
 
+	// Generate unique identifiers for this registration session
+	callID := generateCallID()
+	fromTag := generateCNonce()[:8] // Use first 8 chars as tag
+
 	// Create REGISTER request
 	req := sip.NewRequest(sip.REGISTER, *serverURI)
-	req.AppendHeader(sip.NewHeader("From", fromURI.String()+";tag=12345"))
+	req.AppendHeader(sip.NewHeader("From", fromURI.String()+";tag="+fromTag))
 	req.AppendHeader(sip.NewHeader("To", fromURI.String()))
 	req.AppendHeader(sip.NewHeader("Contact", contactURI.String()))
-	req.AppendHeader(sip.NewHeader("Call-ID", "test-call-id-12345"))
+	req.AppendHeader(sip.NewHeader("Call-ID", callID))
 	req.AppendHeader(sip.NewHeader("CSeq", "1 REGISTER"))
 	req.AppendHeader(sip.NewHeader("Expires", "3600"))
 	req.AppendHeader(sip.NewHeader("Max-Forwards", "70"))
+	req.AppendHeader(sip.NewHeader("Supported", "replaces, outbound, gruu, path, record-aware"))
 	req.AppendHeader(sip.NewHeader("Content-Length", "0"))
 
 	log.Printf("Sending REGISTER to %s", serverURI.String())
@@ -242,30 +275,56 @@ func main() {
 				log.Fatal("No WWW-Authenticate header in 401 response")
 			}
 
-			// Extract realm and nonce from challenge
+			// Extract realm, nonce, opaque, and qop from challenge
 			authStr := authHeader.Value()
 			realm := extractAuthParam(authStr, "realm")
 			nonce := extractAuthParam(authStr, "nonce")
+			opaque := extractAuthParam(authStr, "opaque")
+			qop := extractAuthParam(authStr, "qop")
 
-			log.Printf("Realm: %s, Nonce: %s", realm, nonce)
+			log.Printf("Realm: %s, Nonce: %s, Opaque: %s, QoP: %s", realm, nonce, opaque, qop)
 
-			// Create authenticated REGISTER request
+			// Create authenticated REGISTER request (reuse same Call-ID and tag, increment CSeq)
 			authReq := sip.NewRequest(sip.REGISTER, *serverURI)
-			authReq.AppendHeader(sip.NewHeader("From", fromURI.String()+";tag=12345"))
+			authReq.AppendHeader(sip.NewHeader("From", fromURI.String()+";tag="+fromTag))
 			authReq.AppendHeader(sip.NewHeader("To", fromURI.String()))
 			authReq.AppendHeader(sip.NewHeader("Contact", contactURI.String()))
-			authReq.AppendHeader(sip.NewHeader("Call-ID", "test-call-id-12345"))
+			authReq.AppendHeader(sip.NewHeader("Call-ID", callID))
 			authReq.AppendHeader(sip.NewHeader("CSeq", "2 REGISTER"))
 			authReq.AppendHeader(sip.NewHeader("Expires", "3600"))
 			authReq.AppendHeader(sip.NewHeader("Max-Forwards", "70"))
+			authReq.AppendHeader(sip.NewHeader("Supported", "replaces, outbound, gruu, path, record-aware"))
 			authReq.AppendHeader(sip.NewHeader("Content-Length", "0"))
 
 			// Create digest response
 			uri := serverURI.String()
-			response := calculateDigestResponse(sipUser, realm, sipPassword, "REGISTER", uri, nonce)
+			var authHeaderValue string
 
-			authHeaderValue := fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
-				sipUser, realm, nonce, uri, response)
+			if qop == "auth" {
+				// Use qop=auth with cnonce and nc (match Linphone's parameter order)
+				cnonce := generateCNonce()
+				nc := "00000001"
+				response := calculateDigestResponseWithQop(sipUser, realm, sipPassword, "REGISTER", uri, nonce, cnonce, nc)
+
+				// Match Linphone's exact format: realm, nonce, algorithm, opaque, username, uri, response, cnonce, nc, qop
+				authHeaderValue = fmt.Sprintf(`Digest realm="%s", nonce="%s", algorithm=MD5`, realm, nonce)
+
+				if opaque != "" {
+					authHeaderValue += fmt.Sprintf(`, opaque="%s"`, opaque)
+				}
+
+				authHeaderValue += fmt.Sprintf(`, username="%s", uri="%s", response="%s", cnonce="%s", nc=%s, qop=auth`,
+					sipUser, uri, response, cnonce, nc)
+			} else {
+				// Legacy digest without qop
+				response := calculateDigestResponse(sipUser, realm, sipPassword, "REGISTER", uri, nonce)
+				authHeaderValue = fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
+					sipUser, realm, nonce, uri, response)
+
+				if opaque != "" {
+					authHeaderValue += fmt.Sprintf(`, opaque="%s"`, opaque)
+				}
+			}
 
 			authReq.AppendHeader(sip.NewHeader("Authorization", authHeaderValue))
 
@@ -300,14 +359,16 @@ func main() {
 		log.Println("Request timeout")
 	}
 
-	log.Println("SIP client registered, starting server on 127.0.0.1:5070")
-
 	// Start server to actually listen for incoming calls
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Use the same port as the client
+	serverAddr := fmt.Sprintf("%s:%d", bindIP, clientPort)
+	log.Printf("SIP client registered, starting server on %s", serverAddr)
+
 	go func() {
-		if err := server.ListenAndServe(ctx, "tcp", "127.0.0.1:5070"); err != nil {
+		if err := server.ListenAndServe(ctx, "tcp", serverAddr); err != nil {
 			log.Printf("Server error: %v", err)
 		}
 	}()
@@ -363,32 +424,65 @@ func parseSDP(sdp string) (ip string, port int, err error) {
 }
 
 // Create SDP response for our local endpoint
-func createSDPResponse(localIP string, localPort int) string {
-	return fmt.Sprintf(`v=0
+func createSDPResponse(publicIP string, localPort int, remoteSDP string) string {
+	// Extract media line and codec attributes from remote SDP
+	lines := strings.Split(remoteSDP, "\n")
+	var mediaLine string
+	var codecAttrs []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "m=audio ") {
+			// Replace their port with our port but keep their codec list
+			parts := strings.Split(line, " ")
+			if len(parts) >= 4 {
+				parts[1] = fmt.Sprintf("%d", localPort)
+				mediaLine = strings.Join(parts, " ")
+			}
+		} else if strings.HasPrefix(line, "a=rtpmap:") || strings.HasPrefix(line, "a=fmtp:") {
+			codecAttrs = append(codecAttrs, line)
+		}
+	}
+
+	// Build our response with their exact codec configuration
+	response := fmt.Sprintf(`v=0
 o=echo 1234567890 1234567890 IN IP4 %s
 s=Echo Session
 c=IN IP4 %s
 t=0 0
-m=audio %d RTP/AVP 111 9 0 8
-a=rtpmap:111 opus/48000/2
-a=rtpmap:9 G722/8000
-a=rtpmap:0 PCMU/8000
-a=rtpmap:8 PCMA/8000
-a=sendrecv
-`, localIP, localIP, localPort)
+%s
+`, publicIP, publicIP, mediaLine)
+
+	// Add their codec attributes
+	for _, attr := range codecAttrs {
+		response += attr + "\n"
+	}
+
+	response += "a=sendrecv\n"
+	return response
 }
 
 // Set up RTP echo session
 func setupEchoSession(remoteIP string, remotePort int) (*EchoSession, error) {
-	// Create UDP connection for RTP
-	localAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
+	// Create UDP connection for RTP - allocate port in range 10000-20000
+	var conn *net.UDPConn
+	var err error
+
+	// Try to bind to a port in the range 10000-20000
+	for port := 10000; port <= 20000; port++ {
+		localAddr, addrErr := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", port))
+		if addrErr != nil {
+			continue
+		}
+
+		conn, err = net.ListenUDP("udp", localAddr)
+		if err == nil {
+			break // Successfully bound to this port
+		}
 	}
 
-	conn, err := net.ListenUDP("udp", localAddr)
-	if err != nil {
-		return nil, err
+	if conn == nil {
+		return nil, fmt.Errorf("failed to bind to any port in range 10000-20000: %v", err)
 	}
 
 	localPort := conn.LocalAddr().(*net.UDPAddr).Port
@@ -399,15 +493,18 @@ func setupEchoSession(remoteIP string, remotePort int) (*EchoSession, error) {
 		return nil, err
 	}
 
+	// Create context for this session
+	ctx, cancel := context.WithCancel(context.Background())
+
 	session := &EchoSession{
 		remoteAddr: remoteAddr,
 		localPort:  localPort,
 		conn:       conn,
-		done:       make(chan struct{}),
+		cancel:     cancel,
 	}
 
-	// Start echo goroutine
-	go session.echoLoop()
+	// Start echo goroutine with context
+	go session.echoLoop(ctx)
 
 	return session, nil
 }
@@ -427,43 +524,48 @@ func (s *EchoSession) updateRTPEndpoint(remoteIP string, remotePort int) error {
 	return nil
 }
 
-// RTP echo loop
-func (s *EchoSession) echoLoop() {
+// RTP echo loop with context-based cancellation
+func (s *EchoSession) echoLoop(ctx context.Context) {
 	log.Printf("Starting RTP echo loop, listening on port %d, echoing to %s", s.localPort, s.remoteAddr)
+
+	// Close connection when context is cancelled to interrupt blocking reads
+	go func() {
+		<-ctx.Done()
+		s.conn.Close()
+	}()
 
 	buffer := make([]byte, 1500) // Standard MTU size
 
 	for {
-		select {
-		case <-s.done:
-			log.Printf("Echo loop stopping for port %d", s.localPort)
-			return
-		default:
-			// Set read timeout to avoid blocking indefinitely
-			s.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-
-			n, addr, err := s.conn.ReadFromUDP(buffer)
-			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue // Timeout is expected, continue loop
-				}
-				log.Printf("RTP read error: %v", err)
-				continue
+		n, _, err := s.conn.ReadFromUDP(buffer)
+		if err != nil {
+			// Check if context was cancelled
+			if ctx.Err() != nil {
+				log.Printf("Echo loop stopping for port %d", s.localPort)
+				return
 			}
+			log.Printf("RTP read error: %v", err)
+			continue
+		}
 
-			// Echo the packet back to whoever sent it (not necessarily the SDP endpoint)
-			_, err = s.conn.WriteToUDP(buffer[:n], addr)
-			if err != nil {
-				log.Printf("RTP write error: %v", err)
+		// Echo the packet to the negotiated SDP endpoint (spec compliant)
+		s.mutex.RLock()
+		remoteAddr := s.remoteAddr
+		s.mutex.RUnlock()
+
+		_, err = s.conn.WriteToUDP(buffer[:n], remoteAddr)
+		if err != nil {
+			if ctx.Err() != nil {
+				return // Context cancelled during write
 			}
+			log.Printf("RTP write error: %v", err)
 		}
 	}
 }
 
 // Cleanup session
 func (s *EchoSession) cleanup() {
-	close(s.done)
-	s.conn.Close()
+	s.cancel() // This will trigger context cancellation and close the connection
 	log.Printf("Cleaned up echo session on port %d", s.localPort)
 }
 
@@ -488,7 +590,35 @@ func extractAuthParam(authStr, param string) string {
 	return value
 }
 
-// Calculate MD5 digest response for SIP authentication
+// Generate a random cnonce for digest authentication
+func generateCNonce() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+// Generate a random Call-ID
+func generateCallID() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+// Calculate MD5 digest response for SIP authentication with qop=auth
+func calculateDigestResponseWithQop(username, realm, password, method, uri, nonce, cnonce, nc string) string {
+	// HA1 = MD5(username:realm:password)
+	ha1 := fmt.Sprintf("%x", md5.Sum([]byte(username+":"+realm+":"+password)))
+
+	// HA2 = MD5(method:uri)
+	ha2 := fmt.Sprintf("%x", md5.Sum([]byte(method+":"+uri)))
+
+	// Response = MD5(HA1:nonce:nc:cnonce:qop:HA2)
+	response := fmt.Sprintf("%x", md5.Sum([]byte(ha1+":"+nonce+":"+nc+":"+cnonce+":auth:"+ha2)))
+
+	return response
+}
+
+// Calculate MD5 digest response for SIP authentication (legacy without qop)
 func calculateDigestResponse(username, realm, password, method, uri, nonce string) string {
 	// HA1 = MD5(username:realm:password)
 	ha1 := fmt.Sprintf("%x", md5.Sum([]byte(username+":"+realm+":"+password)))
@@ -500,4 +630,55 @@ func calculateDigestResponse(username, realm, password, method, uri, nonce strin
 	response := fmt.Sprintf("%x", md5.Sum([]byte(ha1+":"+nonce+":"+ha2)))
 
 	return response
+}
+
+// Get our local IP address on the default route interface
+func getDefaultRouteIP() (string, error) {
+	// Use a well-known external IP to determine which local interface would be used
+	// We use Google's DNS server as it's always reachable
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	ip := localAddr.IP
+
+	// Prefer IPv4 over IPv6 for SIP compatibility
+	if ip.To4() != nil {
+		return ip.String(), nil
+	}
+
+	// If we got IPv6, try to find an IPv4 alternative
+	if ip.IsLoopback() {
+		return "127.0.0.1", nil // Use IPv4 loopback instead of ::1
+	}
+
+	return ip.String(), nil
+}
+
+// Get the local IP address that would be used to reach the given destination (deprecated, use getDefaultGatewayIP)
+func getLocalIPForDestination(destination, port string) (string, error) {
+	// Use the actual destination port for the UDP dial to determine routing
+	conn, err := net.Dial("udp", destination+":"+port)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	ip := localAddr.IP
+
+	// Prefer IPv4 over IPv6 for SIP compatibility
+	if ip.To4() != nil {
+		return ip.String(), nil
+	}
+
+	// If we got IPv6, try to find an IPv4 alternative
+	if ip.IsLoopback() {
+		return "127.0.0.1", nil // Use IPv4 loopback instead of ::1
+	}
+
+	return ip.String(), nil
 }
