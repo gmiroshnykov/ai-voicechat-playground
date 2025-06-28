@@ -1,0 +1,8 @@
+services:
+  asterisk:
+    image: andrius/asterisk:alpine-latest-20.5.2
+    container_name: asterisk-sip
+    network_mode: host
+    volumes:
+      - ./asterisk-config:/etc/asterisk:ro
+    restart: unless-stopped
