@@ -1,4 +1,4 @@
-module sip-echo-raw
+module sip-echo
 
 go 1.24.4
 

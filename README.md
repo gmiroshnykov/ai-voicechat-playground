@@ -1,196 +1,109 @@
 # AI Voice Chat Playground
 
-A comprehensive platform for real-time voice chat and audio processing, leveraging OpenAI's Realtime API. This project demonstrates bidirectional voice communication, live transcription, and robust audio utilities across multiple technology stacks.
+A comprehensive platform for real-time voice chat and audio processing, demonstrating multiple approaches to voice communication including OpenAI's Realtime API, WebRTC, and VoIP technologies.
 
 ## Features
 
--   **Real-time Voice Chat:** Engage in live voice conversations with AI, powered by OpenAI's Realtime API.
--   **Bidirectional Audio Streaming:** Seamlessly transmit user speech and receive AI responses.
--   **Live Transcription:** Obtain real-time transcriptions for both user and AI dialogue.
--   **Flexible API Integration:** Supports both OpenAI Agents SDK and direct WebSocket connections for diverse use cases.
--   **Cross-Platform Audio:** Utilizes `mic` and `speaker` packages for reliable audio input/output.
--   **Modular Architecture:** Features a Go-based backend for robust API handling and a Next.js frontend for an interactive web interface.
+- **Real-time Voice Chat:** Multiple implementations for conversing with AI
+- **VoIP Integration:** Complete VoIP solutions from simple echo services to full PBX
+- **Cross-Platform Audio:** CLI tools, web interfaces, and standalone services
+- **Flexible Architecture:** Mix-and-match components for different use cases
 
 ## Quick Start
 
 ### Prerequisites
 
--   Node.js 18+
--   Go 1.22+
--   OpenAI API Key
--   SoX audio library (recommended, included in `devbox` environment)
+- Node.js 18+, Go 1.22+
+- OpenAI API Key (for AI chat features)
+- SIP credentials (for VoIP features)
 
-### Setup
-
-1.  **Clone the repository and install dependencies:**
-
-    ```bash
-    git clone https://github.com/gmiroshnykov/ai-voicechat-playground.git
-    cd ai-voicechat-playground
-    npm install
-    ```
-
-2.  **Configure environment variables:**
-
-    ```bash
-    # Using devbox (recommended for consistent environment)
-    devbox shell
-
-    # Set your OpenAI API key
-    echo "OPENAI_API_KEY=your_api_key_here" > .env
-    ```
-
-### Usage
-
-#### Voice Chat CLI
+### Basic Setup
 
 ```bash
-# Start a real-time voice conversation
-bin/chat
+git clone https://github.com/gmiroshnykov/ai-voicechat-playground.git
+cd ai-voicechat-playground
+npm install
 
-# Customize audio settings (e.g., sample rate, channels)
-bin/chat --rate 24000 --channels 1
+# Set up environment
+echo "OPENAI_API_KEY=your_api_key_here" > .env
+
+# Use devbox for consistent environment (recommended)
+devbox shell
 ```
 
-#### Transcription CLI
+For component-specific setup, see the documentation in each directory.
 
-```bash
-# Live microphone transcription (Agents SDK)
-bin/mic
+## Components
 
-# Live microphone transcription (WebSocket)
-bin/mic-ws
+### CLI Tools ([bin/](bin/))
+Command-line voice chat and transcription tools using OpenAI's Realtime API.
 
-# Transcribe an audio file (Agents SDK)
-bin/transcribe
+### Web Interface ([web/](web/))
+Browser-based WebRTC echo service with modern UI.
 
-# Transcribe an audio file (WebSocket)
-bin/transcribe-ws
-```
+### Backend Server ([server-go/](server-go/))
+Go-based WebRTC server with audio recording capabilities.
 
-#### Audio Playback CLI
+### SIP Echo Service ([sip-echo/](sip-echo/))
+Standalone SIP/RTP echo service for VoIP testing.
 
-```bash
-# Play WAV files
-bin/play audio/count.wav
+### FreeSWITCH PBX ([freeswitch/](freeswitch/))
+Full-featured VoIP PBX with echo dialplan configuration.
 
-# Play raw PCM files
-bin/play-raw audio/count.raw --sample-rate 22050
-```
+### Test Audio Files ([audio/](audio/))
+Sample audio files for testing various components.
 
-#### Go Server
-
-The `server-go` directory contains a Go application that can handle API requests.
-
-```bash
-cd server-go
-go run main.go
-```
-
-#### Web Frontend
-
-The `web` directory hosts a Next.js application for a web-based interface.
-
-```bash
-cd web
-npm run dev
-```
-
-## Architecture Overview
-
-The project is structured into distinct components:
-
--   **CLI Tools:** Located in `bin/`, these Node.js scripts provide direct interaction with the OpenAI API for voice chat, transcription, and audio playback.
--   **Go Backend (`server-go/`):** A Go application designed for robust API handling and potential integration with the frontend.
--   **Next.js Frontend (`web/`):** A React-based web application providing a user interface for voice chat and other features.
-
-### Audio Processing
-
--   **Input:** Primarily raw PCM16 audio at 24kHz mono.
--   **Capture:** Cross-platform microphone access via the `mic` package.
--   **VAD:** Semantic Voice Activity Detection ensures natural speech boundaries.
--   **Streaming:** Real-time audio buffer transmission to OpenAI for processing.
-
-## API Integration
-
-This project primarily integrates with OpenAI's Realtime API for voice chat and transcription:
-
--   **WebSocket Transport:** Utilizes WebSockets for efficient real-time audio streaming.
--   **Audio Streaming:** Achieved by appending audio chunks to `input_audio_buffer`.
--   **Real-time Deltas:** Transcriptions are received as real-time deltas via `conversation.item.input_audio_transcription.delta`.
-
-## Testing
-
-The `audio/` directory contains test audio files for verifying transcription and playback functionality.
-
-```bash
-# Test transcription with audio files
-bin/transcribe
-bin/transcribe-ws
-
-# Test audio playback
-bin/play audio/count.wav
-bin/play-raw audio/count.raw
-```
-
-Expected output demonstrates accurate streaming transcription.
-
-## Development
-
-### Project Structure
+## Architecture
 
 ```
 ai-voicechat-playground/
-├── audio/                         # Test audio files and documentation
-├── bin/                           # Executable CLI scripts (Node.js)
-├── conversations/                 # Stores conversation data
-├── server-go/                     # Go backend application
-│   ├── go.mod                     # Go module file
-│   ├── main.go                    # Main Go application entry
-│   └── ...
-├── web/                           # Next.js web frontend
-│   ├── package.json               # Frontend dependencies
-│   ├── src/                       # Frontend source code
-│   └── ...
-├── package.json                   # Root Node.js dependencies and scripts
-└── README.md                      # Project documentation
+├── bin/                   # CLI tools (Node.js)
+├── web/                   # Web interface (Next.js)
+├── server-go/            # Backend server (Go)
+├── sip-echo/             # SIP echo service (Go)
+├── freeswitch/           # VoIP PBX configuration
+└── audio/                # Test audio files
 ```
 
-### Environment Setup
+## Usage Patterns
 
-[Devbox](https://www.jetify.com/devbox) is used to ensure a consistent development environment across different systems.
+**For AI Voice Chat:**
+- Use `bin/chat` for command-line conversations
+- Use `web/` + `server-go/` for browser-based chat
+
+**For VoIP Testing:**
+- Use `sip-echo/` for lightweight SIP echo testing
+- Use `freeswitch/` for full PBX functionality
+
+**For Development:**
+- Use `bin/` tools for API testing and audio verification
+- Use `audio/` files for consistent testing
+
+## Documentation
+
+- **[CLI Tools Guide](bin/README.md)** - Command-line tools for voice chat and transcription
+- **[Web Interface Guide](web/README.md)** - Browser-based voice chat setup
+- **[Backend Server Guide](server-go/README.md)** - WebRTC server architecture
+- **[SIP Echo Guide](sip-echo/README.md)** - Standalone SIP service configuration
+- **[FreeSWITCH Guide](freeswitch/README.md)** - VoIP PBX deployment
+- **[Audio Files Guide](audio/README.md)** - Test audio specifications
+
+## Development
+
+Use [Devbox](https://www.jetify.com/devbox) for consistent development environment:
 
 ```bash
 devbox shell
 ```
 
-### Key Dependencies
+Each component has its own dependencies and setup instructions - see the individual READMEs for details.
 
--   **`@openai/agents`**: OpenAI Agents SDK for Realtime API.
--   **`mic`**: Cross-platform microphone access.
--   **`speaker`**: Cross-platform audio playback.
--   **`ws`**: WebSocket client for direct API interaction.
--   **`commander`**: CLI argument parsing.
--   **`dotenv`**: Environment variable management.
--   **SoX**: Audio processing and file conversion utility.
+## Security
 
-## Troubleshooting
-
-### Common Issues
-
-1.  **Microphone Access:**
-    -   Ensure your terminal application (e.g., Terminal, iTerm) has microphone permissions.
-    -   Verify microphone hardware functionality.
-2.  **API Connection Errors:**
-    -   Confirm `OPENAI_API_KEY` is correctly set in your `.env` file.
-    -   Check your internet connection.
-3.  **Audio Quality:**
-    -   Experiment with different sample rates (e.g., 16000, 24000, 44100).
-    -   Adjust Voice Activity Detection (VAD) sensitivity settings if applicable.
-
-### Debugging
-
-Enable detailed event logging in the chat scripts by uncommenting relevant debug lines within the WebSocket message handlers.
+- Never commit credentials or API keys to version control
+- Use `.env` files for sensitive configuration
+- Configure network ACLs for VoIP services
+- Review logs regularly for unauthorized access
 
 ## License
 
