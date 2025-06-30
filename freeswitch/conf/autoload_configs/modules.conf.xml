@@ -21,5 +21,9 @@
     <load module="mod_native_file"/>
     <load module="mod_tone_stream"/>
 
+    <!-- Codecs -->
+    <load module="mod_opus"/>
+    <!-- <load module="mod_g722"/> --> <!-- Not available in Homebrew build -->
+
   </modules>
 </configuration>
