@@ -15,5 +15,9 @@ web/dist/
 freeswitch/log/
 freeswitch/db/
 
+# FreeSWITCH sensitive configuration files
+freeswitch/conf/sip_profiles/external.xml
+freeswitch/conf/dialplan/public.xml
+
 # Network captures
 *.pcap
