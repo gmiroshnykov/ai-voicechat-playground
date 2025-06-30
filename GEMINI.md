@@ -1,3 +1,4 @@
 - Use context7 when looking up API docs
 - Never use whisper-1 model
 - The 'web' and 'server-go' components of this project will only ever run on localhost.
+- Always run "go vet" and "go fmt" on every Go source file you touch.

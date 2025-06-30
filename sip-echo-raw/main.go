@@ -88,7 +88,7 @@ func main() {
 	listener.Close()
 
 	// Create client with the available port
-	client, err := sipgo.NewClient(ua, sipgo.WithClientHostname(bindIP), sipgo.WithClientPort(clientPort))
+	client, err := sipgo.NewClient(ua, sipgo.WithClientHostname(publicIP), sipgo.WithClientPort(clientPort), sipgo.WithClientNAT())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -233,6 +233,14 @@ func main() {
 		// ACK does not require a response from the server
 	})
 
+	// Handle NOTIFY requests (typically for voicemail/message waiting indicators)
+	server.OnNotify(func(req *sip.Request, tx sip.ServerTransaction) {
+		log.Printf("Received NOTIFY from %s", req.From().Address.String())
+		// Just acknowledge the NOTIFY with 200 OK
+		res := sip.NewResponseFromRequest(req, 200, "OK", nil)
+		tx.Respond(res)
+	})
+
 	// Generate unique identifiers for this registration session
 	callID := generateCallID()
 	fromTag := generateCNonce()[:8] // Use first 8 chars as tag
@@ -241,7 +249,7 @@ func main() {
 	req := sip.NewRequest(sip.REGISTER, *serverURI)
 	req.AppendHeader(sip.NewHeader("From", fromURI.String()+";tag="+fromTag))
 	req.AppendHeader(sip.NewHeader("To", fromURI.String()))
-	req.AppendHeader(sip.NewHeader("Contact", contactURI.String()))
+	req.AppendHeader(sip.NewHeader("Contact", fmt.Sprintf("\"SIP Echo Client\" <%s>", contactURI.String())))
 	req.AppendHeader(sip.NewHeader("Call-ID", callID))
 	req.AppendHeader(sip.NewHeader("CSeq", "1 REGISTER"))
 	req.AppendHeader(sip.NewHeader("Expires", "3600"))
@@ -251,7 +259,7 @@ func main() {
 
 	log.Printf("Sending REGISTER to %s", serverURI.String())
 	log.Printf("From: %s", fromURI.String())
-	log.Printf("Contact: %s", contactURI.String())
+	log.Printf("Contact: %s", fmt.Sprintf("\"SIP Echo Client\" <%s>", contactURI.String()))
 
 	ctx := context.Background()
 
@@ -288,7 +296,7 @@ func main() {
 			authReq := sip.NewRequest(sip.REGISTER, *serverURI)
 			authReq.AppendHeader(sip.NewHeader("From", fromURI.String()+";tag="+fromTag))
 			authReq.AppendHeader(sip.NewHeader("To", fromURI.String()))
-			authReq.AppendHeader(sip.NewHeader("Contact", contactURI.String()))
+			authReq.AppendHeader(sip.NewHeader("Contact", fmt.Sprintf("\"SIP Echo Client\" <%s>", contactURI.String())))
 			authReq.AppendHeader(sip.NewHeader("Call-ID", callID))
 			authReq.AppendHeader(sip.NewHeader("CSeq", "2 REGISTER"))
 			authReq.AppendHeader(sip.NewHeader("Expires", "3600"))
@@ -486,6 +494,7 @@ func setupEchoSession(remoteIP string, remotePort int) (*EchoSession, error) {
 	}
 
 	localPort := conn.LocalAddr().(*net.UDPAddr).Port
+	log.Printf("Listening for RTP on %s", conn.LocalAddr().String())
 
 	remoteAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", remoteIP, remotePort))
 	if err != nil {
@@ -505,6 +514,17 @@ func setupEchoSession(remoteIP string, remotePort int) (*EchoSession, error) {
 
 	// Start echo goroutine with context
 	go session.echoLoop(ctx)
+
+	// --- RTP priming logic ---
+	// Send a single dummy RTP packet to the remote endpoint to prime the media path
+	dummyRTP := make([]byte, 12) // Minimal RTP header (all zeros)
+	_, err = conn.WriteToUDP(dummyRTP, remoteAddr)
+	if err != nil {
+		log.Printf("Failed to send priming RTP packet to %s: %v", remoteAddr, err)
+	} else {
+		log.Printf("Sent priming RTP packet to %s", remoteAddr)
+	}
+	// --- End RTP priming logic ---
 
 	return session, nil
 }
@@ -561,6 +581,14 @@ func (s *EchoSession) echoLoop(ctx context.Context) {
 			log.Printf("RTP write error: %v", err)
 		}
 	}
+}
+
+// min returns the smaller of two ints
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Cleanup session

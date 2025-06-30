@@ -10,3 +10,10 @@ response.wav
 web/.next/
 web/out/
 web/dist/
+
+# FreeSWITCH runtime directories
+freeswitch/log/
+freeswitch/db/
+
+# Network captures
+*.pcap
