@@ -158,3 +158,196 @@ The original problems were caused by:
 4. **Minimal configurations are easier to debug** and maintain
 
 ---
+
+# SIP ALG Router Interference: 30-Second Call Timeouts with Kyivstar VoIP
+
+## Problem Summary
+Calls to/from Kyivstar VoIP service consistently terminated after exactly 30 seconds with "no ACK received" timeout errors. Subsequent call attempts resulted in "user is busy" responses, preventing successful call establishment.
+
+## Investigation Timeline
+
+### Initial Symptoms
+- **Exact 30-second call duration** before automatic disconnection
+- **SIP Timer F timeout** (32-second INVITE transaction timeout) 
+- **"No ACK received"** error in call termination reason
+- **"User is busy"** responses on subsequent call attempts
+- **Contact header corruption** showing mystery IP `10.0.9.158` instead of actual client IP
+
+### Troubleshooting Steps Performed
+
+1. **FreeSWITCH Configuration Analysis**
+   - Verified gateway registration and SIP profiles
+   - Confirmed proper network settings and transport protocols
+   - Ruled out FreeSWITCH-specific configuration issues
+
+2. **Linphone Client Testing**
+   - Isolated issue by testing with Linphone instead of FreeSWITCH
+   - Confirmed same 30-second timeout behavior
+   - Eliminated FreeSWITCH as the source of the problem
+
+3. **Transport Protocol Testing**
+   - **TCP Transport**: Same timeout behavior observed
+   - **TLS Transport**: Initially thought to bypass SIP ALG, but timeout persisted
+   - **UDP Transport**: Confirmed same Contact header corruption
+
+4. **STUN Configuration Testing**
+   - Configured STUN servers to assist with NAT traversal
+   - No improvement in call duration or Contact header issues
+   - STUN helped with media but didn't resolve signaling problems
+
+5. **Network Packet Analysis**
+   - **Multiple packet captures** across different protocols and configurations
+   - **Contact header inspection** revealed corrupted IP addresses
+   - **Mystery IP `10.0.9.158`** appearing in Contact headers instead of actual client IP
+   - **SIP message flow analysis** showing proper INVITE → 200 OK but missing ACK delivery
+
+### Root Cause Discovery
+
+The issue was traced to **SIP ALG (Application Layer Gateway)** on the home router:
+
+- **Contact Header Corruption**: SIP ALG was rewriting Contact headers with incorrect IP addresses
+- **ACK Delivery Failure**: Corrupted Contact headers prevented proper ACK message routing
+- **Timer F Timeout**: Missing ACK triggered SIP Timer F (32-second timeout), causing call termination
+- **Dialog State Issues**: Failed ACK delivery left SIP dialogs in inconsistent states
+
+### Technical Evidence
+
+**Packet Capture Analysis:**
+```
+Contact: <sip:USERNAME@10.0.9.158;gr=...>  // Corrupted by SIP ALG
+```
+Should have been:
+```
+Contact: <sip:USERNAME@192.168.50.100:61600;transport=udp>  // Correct client IP
+```
+
+**Call Flow Pattern:**
+1. INVITE sent successfully
+2. 180 Ringing received
+3. 200 OK received with corrupted Contact header
+4. ACK sent to corrupted Contact address (never delivered)
+5. Timer F expires after ~30 seconds
+6. BYE sent with Reason: "no ACK received"
+
+## Solution
+
+**Disable SIP ALG on the router** through the router's administrative interface. The exact location varies by manufacturer but is typically found under network/WAN settings or NAT configuration.
+
+## Result
+- **Calls establish and maintain properly** without timeout
+- **Contact headers remain uncorrupted** 
+- **ACK messages delivered successfully**
+- **No more "user is busy" responses**
+- **Full bidirectional audio confirmed**
+
+## Key Learnings
+
+1. **SIP ALG is often problematic** for VoIP applications and should be disabled
+2. **30-second timeouts** combined with "no ACK received" are classic SIP ALG symptoms
+3. **Contact header corruption** is a clear indicator of SIP ALG interference
+4. **Multiple transport protocols** (UDP, TCP, TLS) can all be affected by SIP ALG
+5. **Packet capture analysis** is essential for diagnosing SIP dialog issues
+6. **Router-level network interference** should be considered early in VoIP troubleshooting
+
+## Prevention
+- **Always disable SIP ALG** on home/office routers when deploying VoIP services
+- **Use packet captures** to verify Contact header integrity during VoIP testing
+- **Monitor for Timer F timeouts** as early indicators of ACK delivery problems
+
+---
+
+# Kyivstar VoIP Integration: Symmetric RTP and Immediate Media Establishment
+
+## Problem Summary
+FreeSWITCH calls with Kyivstar VoIP gateway experienced brief (~10 second) call durations, despite successful SIP signaling and registration. The issue was related to RTP media path establishment and NAT traversal with a carrier-grade provider.
+
+## Investigation Process
+
+### Initial Symptoms
+- **FreeSWITCH registered successfully** with Kyivstar gateway
+- **Calls connected** but terminated after ~10 seconds
+- **Brief audio feedback** occasionally heard before disconnection
+- **Linphone client worked perfectly** with same Kyivstar credentials
+
+### Key Discovery: Symmetric RTP
+Through packet capture analysis comparing Linphone vs FreeSWITCH traffic, we discovered:
+
+**Linphone SDP (working):**
+```
+v=0
+o=USERNAME 2214 3185 IN IP4 192.168.50.100
+c=IN IP4 192.168.50.100
+m=audio 55183 RTP/AVP 8 0 18 101
+```
+
+**FreeSWITCH SDP (initially failing):**
+```
+v=0  
+o=FreeSWITCH 1751378290 1751378291 IN IP4 192.168.50.100
+c=IN IP4 192.168.50.100
+m=audio 17202 RTP/AVP 8 101
+```
+
+**Critical Insight:** Kyivstar uses **symmetric RTP (comedia)** - they ignore SDP-advertised IP addresses and instead:
+1. Send initial RTP to the SDP-advertised address
+2. **Wait for first incoming RTP packet** to learn the real source IP/port
+3. Switch to sending RTP to that learned address for the remainder of the call
+
+## Root Cause
+The issue was **delayed RTP establishment**. Unlike Linphone which immediately sent RTP, FreeSWITCH applications like `echo` waited for incoming RTP before generating outbound RTP. This created a deadlock:
+- Kyivstar waited for first RTP packet to learn the real media path
+- FreeSWITCH echo waited for incoming RTP before echoing
+- Result: No RTP flow, causing call termination
+
+## Solution
+**Immediate RTP establishment** using a brief silence stream before echo:
+
+```xml
+<extension name="kyivstar_incoming">
+  <condition field="destination_number" expression="^USERNAME$">
+    <action application="answer"/>
+    <action application="playback" data="silence_stream://100"/>
+    <action application="echo"/>
+  </condition>
+</extension>
+```
+
+### Why This Works
+1. **`silence_stream://100`** generates 100ms of inaudible silence
+2. **Immediate RTP flow** starts as soon as the call is answered
+3. **Kyivstar learns** the real IP/port from first RTP packet
+4. **Echo application** then works normally with established media path
+5. **Calls now last indefinitely** (until manually hung up)
+
+## Configuration Optimizations
+
+### Transport Protocol
+```xml
+<param name="register-transport" value="udp"/>
+<param name="contact-params" value="transport=udp"/>
+```
+Matched working Linphone configuration.
+
+### IP Configuration (Simplified)
+```xml
+<X-PRE-PROCESS cmd="set" data="external_rtp_ip=${local_ip_v4}"/>
+<X-PRE-PROCESS cmd="set" data="external_sip_ip=${local_ip_v4}"/>
+```
+Since Kyivstar uses symmetric RTP, complex STUN configuration is unnecessary. Local IP in SDP works fine because Kyivstar learns the real path from packet flow.
+
+## Key Learnings
+
+1. **Carrier-grade providers often use symmetric RTP** for NAT traversal
+2. **SDP IP addresses may be ignored** in favor of actual packet sources  
+3. **Immediate RTP establishment** is crucial for symmetric RTP scenarios
+4. **Brief silence streams** provide an elegant solution for triggering media flow
+5. **Packet capture comparison** between working/failing clients reveals critical insights
+6. **Minimal configuration** often works better than complex NAT traversal attempts
+
+## Testing Results
+- **Call duration**: Now unlimited (tested 45+ seconds)
+- **Audio quality**: Clear bidirectional echo
+- **Connection establishment**: Immediate and reliable
+- **Configuration complexity**: Minimal and maintainable
+
+---
