@@ -1,0 +1,7 @@
+<include>
+  <extension name="drachtio">
+    <condition field="destination_number" expression="^drachtio$">
+      <action application="bridge" data="user/drachtio"/>
+    </condition>
+  </extension>
+</include>

@@ -7,6 +7,9 @@
 <include>
   <context name="default">
 
+    <!-- Include individual extension files -->
+    <X-PRE-PROCESS cmd="include" data="default/*.xml"/>
+
     <!-- Echo test extension - dial 9999 for echo -->
     <extension name="echo_test">
       <condition field="destination_number" expression="^9999$">

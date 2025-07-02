@@ -1,8 +1,16 @@
 services:
-  asterisk:
-    image: andrius/asterisk:alpine-latest-20.5.2
-    container_name: asterisk-sip
-    network_mode: host
-    volumes:
-      - ./asterisk-config:/etc/asterisk:ro
-    restart: unless-stopped
+  drachtio:
+    image: drachtio/drachtio-server:0.9.3
+    container_name: drachtio
+    ports:
+      - "9022:9022"  # Control port for client connections
+      - "5062:5062/udp"  # SIP UDP (different port to avoid conflict)
+      - "5062:5062/tcp"  # SIP TCP
+    command: >
+      drachtio
+      --contact "sip:*:5062;transport=udp"
+      --loglevel info
+      --homer 127.0.0.1:9060
+      --homer-id 10
+    environment:
+      - DRACHTIO_SECRET=cymru

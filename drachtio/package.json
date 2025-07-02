@@ -1,0 +1,14 @@
+{
+  "name": "drachtio-echo",
+  "version": "1.0.0",
+  "description": "Echo service using drachtio that registers with SIP server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "drachtio-srf": "^4.5.0",
+    "dotenv": "^16.0.0",
+    "sdp-transform": "^2.14.1"
+  }
+}
