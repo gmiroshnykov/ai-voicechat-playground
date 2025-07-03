@@ -1,14 +1,14 @@
 {
-  "name": "drachtio-echo",
+  "name": "firefly",
   "version": "1.0.0",
-  "description": "Echo service using drachtio that registers with SIP server",
+  "description": "VoIP to OpenAI Realtime API bridge",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "drachtio-srf": "^4.5.0",
-    "dotenv": "^16.0.0",
+    "rtp.js": "^0.15.2",
     "sdp-transform": "^2.14.1"
   }
 }

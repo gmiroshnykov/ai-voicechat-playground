@@ -4,14 +4,15 @@
   
   <gateways>
     <gateway name="kyivstar">
-      <param name="username" value="YOUR_SIP_USERNAME"/>
-      <param name="password" value="YOUR_SIP_PASSWORD"/>
-      <param name="realm" value="voip.kyivstar.ua"/>
-      <param name="proxy" value="voip.kyivstar.ua:5060"/>
-      <param name="register" value="true"/>
-      <param name="register-transport" value="tcp"/>
-      <param name="contact-params" value="transport=tcp"/>
-      <param name="extension" value="YOUR_SIP_USERNAME"/>
+      <param name="username" value="$${sip_gateway_username}"/>
+      <param name="password" value="$${sip_gateway_password}"/>
+      <param name="realm" value="$${sip_gateway_realm}"/>
+      <param name="proxy" value="$${sip_gateway_proxy}"/>
+      <!-- To enable Kyivstar registration, change "false" to "true" below -->
+      <param name="register" value="false"/>
+      <param name="register-transport" value="udp"/>
+      <param name="contact-params" value="transport=udp"/>
+      <param name="extension" value="$${sip_gateway_extension}"/>
       <param name="context" value="public"/>
       <param name="caller-id-in-from" value="false"/>
       <param name="ping" value="25"/>
@@ -57,10 +58,6 @@
     <!-- Accept any authentication without actually checking (set to false for production) -->
     <param name="accept-blind-auth" value="false"/>
     <param name="auth-calls" value="false"/>
-    
-    <!-- Let router handle NAT like it does for Linphone -->
-    <param name="inbound-bypass-media" value="true"/>
-    <param name="inbound-proxy-media" value="false"/>
 
     <!-- Apply inbound ACL from ACL list -->
     <param name="apply-inbound-acl" value="domains"/>

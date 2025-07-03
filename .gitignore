@@ -1,11 +1,15 @@
-tmp/
+# Dependencies
 node_modules/
-.env
-.env.local
-.env.*.local
-.DS_Store
 
-response.wav
+# Environment and secrets
+.envrc.local
+
+# System files
+.DS_Store
+tmp/
+
+# Dev tools
+.devbox/
 
 # Next.js
 web/.next/
@@ -16,9 +20,8 @@ web/dist/
 freeswitch/log/
 freeswitch/db/
 
-# FreeSWITCH sensitive configuration files
-freeswitch/conf/sip_profiles/external.xml
-freeswitch/conf/dialplan/public.xml
-
 # Network captures
 *.pcap
+
+# Ephemeral documents
+TODO.md

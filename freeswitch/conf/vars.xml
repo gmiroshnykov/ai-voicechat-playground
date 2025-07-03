@@ -7,6 +7,20 @@
   <X-PRE-PROCESS cmd="set" data="default_password=1234"/>
 
   <!--
+       SIP Gateway credentials from environment variables
+  -->
+  <X-PRE-PROCESS cmd="set" data="sip_gateway_username=$${env(SIP_USERNAME)}"/>
+  <X-PRE-PROCESS cmd="set" data="sip_gateway_password=$${env(SIP_PASSWORD)}"/>
+  <X-PRE-PROCESS cmd="set" data="sip_gateway_realm=$${env(SIP_DOMAIN)}"/>
+  <X-PRE-PROCESS cmd="set" data="sip_gateway_proxy=$${env(SIP_DOMAIN)}:$${env(SIP_PORT)}"/>
+
+  <!--
+       Firefly SIP user credentials
+  -->
+  <X-PRE-PROCESS cmd="set" data="firefly_username=firefly"/>
+  <X-PRE-PROCESS cmd="set" data="firefly_password=$${env(FIREFLY_PASSWORD)}"/>
+
+  <!--
        Enhanced codec configuration - includes high-quality codecs
        OPUS for better audio quality, PCMU/PCMA for compatibility
        (G722 not available in Homebrew build)

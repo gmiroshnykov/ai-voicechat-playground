@@ -1,14 +1,16 @@
-# Drachtio Echo Service
+# Firefly - VoIP to OpenAI Realtime API Bridge
 
-A SIP echo service built with drachtio that registers with a SIP server (FreeSWITCH/Kyivstar) and echoes RTP audio back to callers.
+A SIP service built with drachtio that bridges telephone calls to OpenAI's Realtime API, enabling AI-powered voice conversations over traditional phone networks.
 
 ## Features
 
 - Registers as a SIP endpoint with any SIP server
 - Accepts incoming calls
-- Echoes RTP packets back without transcoding
+- Echoes RTP packets back without transcoding (development mode)
 - Extracts call context (From, To, Diversion headers)
 - Manages RTP port allocation
+- Multi-tenant support via Diversion headers
+- Production-ready for Kyivstar VoIP integration
 
 ## Prerequisites
 
@@ -32,21 +34,21 @@ A SIP echo service built with drachtio that registers with a SIP server (FreeSWI
    npm install
    ```
 
-2. Copy `.env.example` to `.env` and configure:
-   ```bash
-   cp .env.example .env
-   ```
+2. Environment variables are managed by direnv in the project root:
+   - FreeSWITCH configuration works out of the box
+   - For production/Kyivstar: copy `.envrc.local.example` to `.envrc.local` and configure
+   - Set `SIP_PROVIDER="kyivstar"` to switch from FreeSWITCH to Kyivstar
 
-3. Update `.env` with your settings:
+3. Key environment variables:
+   - `SIP_PROVIDER`: "freeswitch" (default) or "kyivstar"
    - `LOCAL_IP`: Your machine's IP address
-   - `SIP_DOMAIN`: FreeSWITCH or Kyivstar server
-   - `SIP_USERNAME`/`SIP_PASSWORD`: Registration credentials
+   - `SIP_*`: SIP server credentials (auto-configured based on provider)
 
 ## Testing with FreeSWITCH
 
 1. Add a user in FreeSWITCH's `directory/default.xml`:
    ```xml
-   <user id="drachtio-echo">
+   <user id="firefly">
      <params>
        <param name="password" value="password"/>
      </params>
@@ -58,14 +60,16 @@ A SIP echo service built with drachtio that registers with a SIP server (FreeSWI
    npm start
    ```
 
-3. Make a call to `drachtio-echo` from another SIP client
+3. Make a call to `firefly` extension from another SIP client
 
 ## Architecture
 
 ```
-Caller → SIP Server → drachtio-server → drachtio-echo (Node.js)
+Caller → SIP Server → drachtio-server → Firefly (Node.js)
            ↓                                    ↓
          [RTP] ←──────── echo ──────────── [RTP Handler]
+                                               ↓
+                                    (Future: OpenAI Realtime API)
 ```
 
 ## How It Works

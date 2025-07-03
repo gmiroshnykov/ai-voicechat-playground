@@ -4,7 +4,6 @@ go 1.24.4
 
 require (
 	github.com/emiago/sipgo v0.33.0
-	github.com/joho/godotenv v1.5.1
 )
 
 require (

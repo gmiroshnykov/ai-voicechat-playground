@@ -1,0 +1,20 @@
+<configuration name="opus.conf" description="OPUS Codec">
+  <settings>
+    <!-- Set to false to disable OPUS FEC (Forward Error Correction) -->
+    <param name="use-fec" value="true"/>
+    <!-- Set to false to disable OPUS DTX (Discontinuous Transmission) -->
+    <param name="use-dtx" value="true"/>
+    <!-- OPUS packet loss percentage (0-100) -->
+    <param name="packet-loss-percent" value="10"/>
+    <!-- OPUS complexity (0-10, higher = better quality but more CPU) -->
+    <param name="complexity" value="10"/>
+    <!-- OPUS bitrate control mode: vbr, cvbr, cbr -->
+    <param name="bitrate-control" value="vbr"/>
+    <!-- Maximum bitrate in bits per second -->
+    <param name="maxaveragebitrate" value="64000"/>
+    <!-- Maximum playback rate for asymmetric configuration -->
+    <param name="maxplaybackrate" value="48000"/>
+    <!-- Stereo parameter -->
+    <param name="stereo" value="false"/>
+  </settings>
+</configuration>

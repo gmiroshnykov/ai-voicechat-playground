@@ -17,7 +17,6 @@ import (
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
-	"github.com/joho/godotenv"
 )
 
 type EchoSession struct {
@@ -34,15 +33,10 @@ var (
 )
 
 func main() {
-	// Load environment variables
-	err := godotenv.Load("../.env")
-	if err != nil {
-		log.Println("Error loading .env file:", err)
-	}
-
-	sipUser := os.Getenv("SIP_USER")
-	sipPassword := os.Getenv("SIP_PASSWORD")
-	sipServer := os.Getenv("SIP_SERVER")
+	// Environment variables are provided by direnv in the parent directory
+	sipUser := os.Getenv("SIP_USERNAME")
+	sipPassword := os.Getenv("SIP_PASSWORD") 
+	sipServer := os.Getenv("SIP_DOMAIN")
 	sipPort := os.Getenv("SIP_PORT")
 	advertiseIP := os.Getenv("SIP_ADVERTISE_IP")
 

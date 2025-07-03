@@ -7,10 +7,12 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 # Create required directories
 mkdir -p "$PROJECT_DIR/freeswitch/log" "$PROJECT_DIR/freeswitch/db"
 
-# Start FreeSWITCH natively (installed via Homebrew) in foreground
+echo "Starting FreeSWITCH..."
+
 /opt/homebrew/bin/freeswitch \
   -c \
   -nonat \
+  -np \
   -conf "$PROJECT_DIR/freeswitch/conf" \
   -log "$PROJECT_DIR/freeswitch/log" \
   -db "$PROJECT_DIR/freeswitch/db"

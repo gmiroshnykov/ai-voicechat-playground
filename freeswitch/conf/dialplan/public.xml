@@ -37,11 +37,11 @@
       </condition>
     </extension>
 
-    <!-- VoIP Provider incoming calls - route to echo with immediate RTP establishment -->
-    <extension name="provider_incoming">
-      <condition field="destination_number" expression="^YOUR_PHONE_NUMBER$">
+    <!-- Kyivstar incoming calls - route to echo with immediate RTP establishment -->
+    <extension name="kyivstar_incoming">
+      <condition field="destination_number" expression="^$${sip_gateway_extension}$">
         <action application="answer"/>
-        <action application="log" value="INFO Provider incoming call to ${destination_number} from ${caller_id_number}"/>
+        <action application="log" value="INFO Kyivstar incoming call to ${destination_number} from ${caller_id_number}"/>
         <!-- Brief silence establishes RTP flow for symmetric RTP carriers -->
         <action application="playback" data="silence_stream://100"/>
         <action application="echo"/>

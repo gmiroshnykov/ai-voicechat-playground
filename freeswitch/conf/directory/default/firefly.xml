@@ -1,15 +1,15 @@
 <include>
-  <user id="drachtio">
+  <user id="$${firefly_username}">
     <params>
-      <param name="password" value="drachtio123"/>
+      <param name="password" value="$${firefly_password}"/>
       <param name="vm-password" value="1234"/>
     </params>
     <variables>
       <variable name="toll_allow" value="domestic,international,local"/>
-      <variable name="accountcode" value="drachtio"/>
+      <variable name="accountcode" value="firefly"/>
       <variable name="user_context" value="default"/>
-      <variable name="effective_caller_id_name" value="Drachtio Echo"/>
-      <variable name="effective_caller_id_number" value="drachtio"/>
+      <variable name="effective_caller_id_name" value="Firefly"/>
+      <variable name="effective_caller_id_number" value="firefly"/>
       <variable name="outbound_caller_id_name" value="$${outbound_caller_name}"/>
       <variable name="outbound_caller_id_number" value="$${outbound_caller_id}"/>
       <variable name="callgroup" value="default"/>
