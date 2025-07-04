@@ -56,6 +56,7 @@ class RtpEcho {
     this.lastReceivedTimestamp = null;
     this.lastReceivedSeqNum = null;
     this.detectedSamplesPerFrame = null;
+    this.frameSizeConfirmed = false;
   }
 
   getSamplesPerFrame() {
@@ -126,8 +127,8 @@ class RtpEcho {
         }
         this.rtpStats.lastPacketTime = now;
 
-        // Log source changes for security monitoring
-        if (!this.rtpLatched || this.remoteAddr !== rinfo.address) {
+        // Log source changes for security monitoring (only when address actually changes)
+        if (!this.rtpLatched || this.remoteAddr !== rinfo.address || this.remotePort !== rinfo.port) {
           console.log(`RTP latching to ${rinfo.address}:${rinfo.port} (was ${this.remoteAddr}:${this.remotePort})`);
         }
 
@@ -156,10 +157,11 @@ class RtpEcho {
                 if (timestampDiff > 80 && timestampDiff < 1920) {
                   this.detectedSamplesPerFrame = timestampDiff;
 
-                  // Also try to detect from payload if possible
+                  // Also try to detect from payload if possible (log only once)
                   const payloadSamples = this.calculateSamplesFromPayload(payloadLength);
-                  if (payloadSamples !== null && payloadSamples === timestampDiff) {
+                  if (payloadSamples !== null && payloadSamples === timestampDiff && !this.frameSizeConfirmed) {
                     console.log(`Dynamic frame size confirmed: ${timestampDiff} samples (${payloadLength} bytes)`);
+                    this.frameSizeConfirmed = true;
                   }
                 }
               }
@@ -367,6 +369,7 @@ class RtpEcho {
     this.rtcpLatched = false;
     this.remoteRtcpAddr = null;
     this.remoteRtcpPort = null;
+    this.frameSizeConfirmed = false;
   }
 }
 
