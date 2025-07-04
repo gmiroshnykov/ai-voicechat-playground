@@ -155,7 +155,7 @@ class RtpEcho {
                 // Sanity check: frame size should be between 80 (5ms) and 1920 (40ms at 48kHz)
                 if (timestampDiff > 80 && timestampDiff < 1920) {
                   this.detectedSamplesPerFrame = timestampDiff;
-                  
+
                   // Also try to detect from payload if possible
                   const payloadSamples = this.calculateSamplesFromPayload(payloadLength);
                   if (payloadSamples !== null && payloadSamples === timestampDiff) {
@@ -270,7 +270,7 @@ class RtpEcho {
       this.rtcpSocket.send(rtcpBuffer, targetPort, targetAddr);
 
       const latchStatus = this.rtcpLatched ? " (latched)" : " (default RTP+1)";
-      const frameInfo = this.detectedSamplesPerFrame ? 
+      const frameInfo = this.detectedSamplesPerFrame ?
         ` [dynamic frame: ${this.detectedSamplesPerFrame} samples]` : '';
       console.log(`Sent RTCP SR to ${targetAddr}:${targetPort}${latchStatus}: packets=${sr.getPacketCount()}, bytes=${sr.getOctetCount()}${frameInfo}`);
     } catch (error) {
@@ -304,10 +304,10 @@ class RtpEcho {
 
     // Use dynamically detected frame size if available, otherwise fall back to default
     const samplesPerFrame = this.detectedSamplesPerFrame || this.samplesPerFrame;
-    
+
     // For codecs where we can calculate from payload, verify against detected value
     const payloadSamples = this.calculateSamplesFromPayload(payload.length);
-    if (payloadSamples !== null && this.detectedSamplesPerFrame && 
+    if (payloadSamples !== null && this.detectedSamplesPerFrame &&
         payloadSamples !== this.detectedSamplesPerFrame) {
       console.log(`Frame size mismatch: payload suggests ${payloadSamples} samples, ` +
                   `but detected ${this.detectedSamplesPerFrame} from timestamps`);
@@ -415,7 +415,7 @@ async function registerWithSipServer() {
     },
     auth: {
       username: process.env.SIP_USERNAME,
-      password: process.env.SIP_PASSWORD
+      password: process.env.SIP_PASSWORD,
     }
   });
 
@@ -428,7 +428,14 @@ async function registerWithSipServer() {
     } else if (res.status === 401 || res.status === 407) {
       console.log('Authentication challenge received, retrying...');
     } else {
+      // Fatal registration errors - exit immediately
       console.error(`Registration failed with status ${res.status}`);
+      if (res.status === 403) {
+        console.error('Authentication failed - check username/password');
+      } else if (res.status >= 400) {
+        console.error('Fatal SIP registration error');
+      }
+      process.exit(1);
     }
   });
 }

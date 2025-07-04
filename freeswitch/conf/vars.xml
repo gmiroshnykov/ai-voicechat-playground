@@ -9,16 +9,17 @@
   <!--
        SIP Gateway credentials from environment variables
   -->
-  <X-PRE-PROCESS cmd="set" data="sip_gateway_username=$${env(SIP_USERNAME)}"/>
-  <X-PRE-PROCESS cmd="set" data="sip_gateway_password=$${env(SIP_PASSWORD)}"/>
-  <X-PRE-PROCESS cmd="set" data="sip_gateway_realm=$${env(SIP_DOMAIN)}"/>
-  <X-PRE-PROCESS cmd="set" data="sip_gateway_proxy=$${env(SIP_DOMAIN)}:$${env(SIP_PORT)}"/>
+  <X-PRE-PROCESS cmd="env-set" data="sip_gateway_username=$SIP_USERNAME"/>
+  <X-PRE-PROCESS cmd="env-set" data="sip_gateway_password=$SIP_PASSWORD"/>
+  <X-PRE-PROCESS cmd="env-set" data="sip_gateway_realm=$SIP_DOMAIN"/>
+  <X-PRE-PROCESS cmd="env-set" data="sip_gateway_proxy=$SIP_DOMAIN:$SIP_PORT"/>
+  <X-PRE-PROCESS cmd="env-set" data="sip_gateway_extension=$KYIVSTAR_SIP_USERNAME"/>
 
   <!--
        Firefly SIP user credentials
   -->
   <X-PRE-PROCESS cmd="set" data="firefly_username=firefly"/>
-  <X-PRE-PROCESS cmd="set" data="firefly_password=$${env(FIREFLY_PASSWORD)}"/>
+  <X-PRE-PROCESS cmd="env-set" data="firefly_password=$FIREFLY_PASSWORD"/>
 
   <!--
        Enhanced codec configuration - includes high-quality codecs
