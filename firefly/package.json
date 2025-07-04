@@ -2,13 +2,27 @@
   "name": "firefly",
   "version": "1.0.0",
   "description": "VoIP to OpenAI Realtime API bridge",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node index.js"
+    "build": "tsc",
+    "start": "npm run build && node dist/index.js",
+    "dev": "npm run build && node dist/index.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@tsconfig/node20": "^20.1.6",
+    "@types/node": "^24.0.10",
+    "@types/sdp-transform": "^2.4.10",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
-    "drachtio-srf": "^4.5.0",
+    "drachtio-srf": "^5.0.10",
     "rtp.js": "^0.15.2",
-    "sdp-transform": "^2.14.1"
+    "sdp-transform": "^2.15.0"
   }
 }

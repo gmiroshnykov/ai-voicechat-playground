@@ -45,7 +45,10 @@ Browser-based WebRTC echo service with modern UI.
 Go-based WebRTC server with audio recording capabilities.
 
 ### SIP Echo Service ([sip-echo/](sip-echo/))
-Standalone SIP/RTP echo service for VoIP testing.
+Standalone SIP/RTP echo service for VoIP testing (Go-based).
+
+### Firefly VoIP Service ([firefly/](firefly/))
+Advanced TypeScript-based SIP/RTP echo service with NAT traversal and RTCP support.
 
 ### FreeSWITCH PBX ([freeswitch/](freeswitch/))
 Full-featured VoIP PBX with echo dialplan configuration.
@@ -61,6 +64,7 @@ ai-voicechat-playground/
 ├── web/                   # Web interface (Next.js)
 ├── server-go/            # Backend server (Go)
 ├── sip-echo/             # SIP echo service (Go)
+├── firefly/              # Advanced VoIP echo service (TypeScript)
 ├── freeswitch/           # VoIP PBX configuration
 └── audio/                # Test audio files
 ```
@@ -72,7 +76,8 @@ ai-voicechat-playground/
 - Use `web/` + `server-go/` for browser-based chat
 
 **For VoIP Testing:**
-- Use `sip-echo/` for lightweight SIP echo testing
+- Use `sip-echo/` for lightweight Go-based SIP echo testing
+- Use `firefly/` for advanced TypeScript-based SIP echo with NAT traversal
 - Use `freeswitch/` for full PBX functionality
 
 **For Development:**
@@ -84,7 +89,8 @@ ai-voicechat-playground/
 - **[CLI Tools Guide](bin/README.md)** - Command-line tools for voice chat and transcription
 - **[Web Interface Guide](web/README.md)** - Browser-based voice chat setup
 - **[Backend Server Guide](server-go/README.md)** - WebRTC server architecture
-- **[SIP Echo Guide](sip-echo/README.md)** - Standalone SIP service configuration
+- **[SIP Echo Guide](sip-echo/README.md)** - Standalone Go-based SIP service configuration
+- **[Firefly Guide](firefly/README.md)** - Advanced TypeScript-based VoIP service with NAT traversal
 - **[FreeSWITCH Guide](freeswitch/README.md)** - VoIP PBX deployment
 - **[Audio Files Guide](audio/README.md)** - Test audio specifications
 
