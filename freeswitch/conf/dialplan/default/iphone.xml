@@ -1,0 +1,7 @@
+<include>
+  <extension name="iphone">
+    <condition field="destination_number" expression="^iphone$">
+      <action application="bridge" data="user/iphone"/>
+    </condition>
+  </extension>
+</include>

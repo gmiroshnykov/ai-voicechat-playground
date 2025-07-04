@@ -1,0 +1,7 @@
+<include>
+  <extension name="linphone">
+    <condition field="destination_number" expression="^linphone$">
+      <action application="bridge" data="user/linphone"/>
+    </condition>
+  </extension>
+</include>

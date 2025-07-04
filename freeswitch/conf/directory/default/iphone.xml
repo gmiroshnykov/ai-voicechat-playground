@@ -1,0 +1,14 @@
+<include>
+  <user id="iphone">
+    <params>
+      <param name="password" value="iphone123"/>
+    </params>
+    <variables>
+      <variable name="user_context" value="default"/>
+      <variable name="effective_caller_id_name" value="iPhone"/>
+      <variable name="effective_caller_id_number" value="iphone"/>
+      <variable name="toll_allow" value="domestic,international,local"/>
+      <variable name="callgroup" value="default"/>
+    </variables>
+  </user>
+</include>
