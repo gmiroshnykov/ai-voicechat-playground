@@ -44,12 +44,12 @@ function validateIpAddress(ip: string): string {
   return ip;
 }
 
-function validateLogLevel(level: string): "debug" | "info" | "warn" | "error" {
-  const validLevels = ["debug", "info", "warn", "error"];
+function validateLogLevel(level: string): "trace" | "debug" | "info" | "warn" | "error" {
+  const validLevels = ["trace", "debug", "info", "warn", "error"];
   if (!validLevels.includes(level)) {
     throw new ConfigurationError(`Invalid LOG_LEVEL: ${level}. Must be one of: ${validLevels.join(', ')}`);
   }
-  return level as "debug" | "info" | "warn" | "error";
+  return level as "trace" | "debug" | "info" | "warn" | "error";
 }
 
 export function loadConfig(): AppConfig {
@@ -80,18 +80,32 @@ export function loadConfig(): AppConfig {
     const rtpConfig = {
       localIp: validateIpAddress(getRequiredEnv('LOCAL_IP')),
       portMin: validatePort(getOptionalEnv('RTP_PORT_MIN', '10000'), 'RTP_PORT_MIN'),
-      portMax: validatePort(getOptionalEnv('RTP_PORT_MAX', '20000'), 'RTP_PORT_MAX')
+      portMax: validatePort(getOptionalEnv('RTP_PORT_MAX', '20000'), 'RTP_PORT_MAX'),
+      jitterBufferMs: validatePort(getOptionalEnv('JITTER_BUFFER_MS', '40'), 'JITTER_BUFFER_MS')
     };
 
     // Validate RTP port range
     if (rtpConfig.portMin >= rtpConfig.portMax) {
       throw new ConfigurationError('RTP_PORT_MIN must be less than RTP_PORT_MAX');
     }
+    
+    // Validate jitter buffer range (10ms to 200ms for conversational quality)
+    if (rtpConfig.jitterBufferMs < 10 || rtpConfig.jitterBufferMs > 200) {
+      throw new ConfigurationError('JITTER_BUFFER_MS must be between 10 and 200 milliseconds');
+    }
+
+    // OpenAI config now depends on having an API key, not a separate enabled flag
+    const openaiApiKey = process.env.OPENAI_API_KEY || '';
+    const openaiConfig = {
+      enabled: openaiApiKey.length > 0,
+      apiKey: openaiApiKey
+    };
 
     const config: AppConfig = {
       sip: sipConfig,
       drachtio: drachtioConfig,
       rtp: rtpConfig,
+      openai: openaiConfig,
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

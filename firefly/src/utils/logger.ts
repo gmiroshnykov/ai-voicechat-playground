@@ -1,13 +1,14 @@
 import { config } from '../config';
 import { isFireflyError } from './errors';
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
   [key: string]: unknown;
 }
 
 export interface Logger {
+  trace(message: string, context?: LogContext): void;
   debug(message: string, context?: LogContext): void;
   info(message: string, context?: LogContext): void;
   warn(message: string, context?: LogContext): void;
@@ -16,10 +17,11 @@ export interface Logger {
 }
 
 const LOG_LEVELS: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3
+  trace: 0,
+  debug: 1,
+  info: 2,
+  warn: 3,
+  error: 4
 };
 
 class ConsoleLogger implements Logger {
@@ -43,6 +45,12 @@ class ConsoleLogger implements Logger {
       : '';
     
     return `[${timestamp}] [${level.toUpperCase()}] ${message}${contextStr}`;
+  }
+
+  trace(message: string, context?: LogContext): void {
+    if (this.shouldLog('trace')) {
+      console.log(this.formatMessage('trace', message, context));
+    }
   }
 
   debug(message: string, context?: LogContext): void {

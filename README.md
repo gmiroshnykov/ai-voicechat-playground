@@ -48,7 +48,7 @@ Go-based WebRTC server with audio recording capabilities.
 Standalone SIP/RTP echo service for VoIP testing (Go-based).
 
 ### Firefly VoIP Service ([firefly/](firefly/))
-Advanced TypeScript-based SIP/RTP echo service with NAT traversal and RTCP support.
+Advanced TypeScript-based SIP/RTP service with OpenAI Realtime API integration, NAT traversal, and RTCP support. Provides both echo mode and AI chat mode for PSTN callers.
 
 ### FreeSWITCH PBX ([freeswitch/](freeswitch/))
 Full-featured VoIP PBX with echo dialplan configuration.
@@ -80,6 +80,11 @@ ai-voicechat-playground/
 - Use `firefly/` for advanced TypeScript-based SIP echo with NAT traversal
 - Use `freeswitch/` for full PBX functionality
 
+**For PSTN-to-AI Bridge:**
+- Use `firefly/` with `--mode chat` to bridge phone calls to OpenAI Realtime API
+- Supports G.711 PCMA with no transcoding for low latency
+- AI agent starts in Ukrainian, switches to English when prompted
+
 **For Development:**
 - Use `bin/` tools for API testing and audio verification
 - Use `audio/` files for consistent testing
@@ -90,7 +95,7 @@ ai-voicechat-playground/
 - **[Web Interface Guide](web/README.md)** - Browser-based voice chat setup
 - **[Backend Server Guide](server-go/README.md)** - WebRTC server architecture
 - **[SIP Echo Guide](sip-echo/README.md)** - Standalone Go-based SIP service configuration
-- **[Firefly Guide](firefly/README.md)** - Advanced TypeScript-based VoIP service with NAT traversal
+- **[Firefly Guide](firefly/README.md)** - Advanced TypeScript-based VoIP service with OpenAI integration and NAT traversal
 - **[FreeSWITCH Guide](freeswitch/README.md)** - VoIP PBX deployment
 - **[Audio Files Guide](audio/README.md)** - Test audio specifications
 

@@ -1,0 +1,82 @@
+# AI VoiceChat Playground Configuration
+# Copy this file to .envrc and update with your values
+# Or use .envrc.local for local overrides
+
+# =============================================================================
+# Global Configuration
+# =============================================================================
+
+# Development Environment
+export NODE_ENV="development"
+export LOG_LEVEL="info"  # debug, info, warn, error
+
+# OpenAI Configuration (shared across components)
+export OPENAI_API_KEY="your_openai_api_key_here"
+
+# =============================================================================
+# Firefly (SIP/RTP Bridge) Configuration  
+# =============================================================================
+
+# SIP Provider Configuration
+export SIP_PROVIDER="kyivstar"  # or "freeswitch" for local development
+export SIP_DOMAIN="sbc-sei2.kyivstar.ua"
+export SIP_USERNAME="your_username_here"
+export SIP_PASSWORD="your_password_here"
+export SIP_PORT="5060"
+
+# Drachtio Configuration
+export DRACHTIO_HOST="127.0.0.1"
+export DRACHTIO_PORT="9022"
+export DRACHTIO_SECRET="cymru"
+export DRACHTIO_SIP_PORT="5060"
+
+# RTP Configuration
+export LOCAL_IP="your_local_ip_here"  # e.g., "192.168.1.100"
+export RTP_PORT_MIN="10000"
+export RTP_PORT_MAX="20000"
+
+# OpenAI Integration for Firefly
+# Note: OpenAI features are enabled when API key is provided and --mode chat is used
+# Agent name and instructions are now hardcoded in the application
+
+# =============================================================================
+# Web Frontend Configuration
+# =============================================================================
+
+# Next.js specific
+export NEXT_PUBLIC_OPENAI_API_KEY=""  # Leave empty for security - use server routes instead
+
+# =============================================================================
+# Server-Go Configuration
+# =============================================================================
+
+# Add any Go server specific config here as needed
+# export GO_SERVER_PORT="8080"
+
+# =============================================================================
+# Development Tools
+# =============================================================================
+
+# FreeSWITCH (uses XML config files, but these can be useful for scripts)
+export FREESWITCH_HOST="127.0.0.1"
+export FREESWITCH_PORT="8021"
+export FREESWITCH_PASSWORD="ClueCon"
+
+# =============================================================================
+# Usage Notes
+# =============================================================================
+
+# Firefly Modes:
+# - Default mode (--mode echo): Incoming calls use echo mode (existing behavior)
+# - Chat mode (--mode chat): Calls bridge to OpenAI Realtime API using G.711 PCMA (requires OPENAI_API_KEY)
+#
+# To test locally:
+# 1. Set SIP_PROVIDER="freeswitch" and start FreeSWITCH
+# 2. Register a SIP client and call the configured extension
+# 3. For production, set SIP_PROVIDER="kyivstar" with your credentials
+# 4. For OpenAI integration, set OPENAI_API_KEY and use --mode chat
+
+# Security Notes:
+# - Never commit .envrc with real credentials
+# - Use .envrc.local for local overrides (also gitignored)
+# - Consider using a secrets management system for production

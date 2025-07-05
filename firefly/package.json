@@ -21,6 +21,8 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@openai/agents": "^0.0.10",
+    "commander": "^14.0.0",
     "drachtio-srf": "^5.0.10",
     "rtp.js": "^0.15.2",
     "sdp-transform": "^2.15.0"

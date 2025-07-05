@@ -11,11 +11,13 @@ export class SipHandler {
   private readonly config: AppConfig;
   private readonly logger: Logger;
   private readonly activeDialogs: Map<string, Dialog>;
+  private readonly mode: 'echo' | 'chat';
 
-  constructor(srf: SrfClient, rtpManager: RtpManager, config: AppConfig) {
+  constructor(srf: SrfClient, rtpManager: RtpManager, config: AppConfig, mode: 'echo' | 'chat' = 'echo') {
     this.srf = srf;
     this.rtpManager = rtpManager;
     this.config = config;
+    this.mode = mode;
     this.logger = createLogger({ component: 'SipHandler' });
     this.activeDialogs = new Map();
     
@@ -44,10 +46,17 @@ export class SipHandler {
         return;
       }
 
-      // Extract codec information
-      const codecInfo = this.extractCodecInfo(audioMedia);
+      // Determine session type based on CLI mode and OpenAI configuration
+      const sessionType = this.mode === 'chat' && this.config.openai.enabled ? 'bridge' : 'echo';
+
+      // Extract codec information based on session type
+      const codecInfo = this.extractCodecInfo(audioMedia, sessionType);
       if (!codecInfo) {
-        callLogger.error('No supported codec in offer');
+        const supportedCodecs = sessionType === 'bridge' ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
+        callLogger.error('No supported codec in offer', { 
+          sessionType, 
+          supportedCodecs 
+        });
         res.send(488, 'Not Acceptable Here');
         return;
       }
@@ -59,16 +68,47 @@ export class SipHandler {
       callLogger.info('Negotiated codec', {
         codec: codecInfo.name,
         payload: codecInfo.payload,
-        rate: codecInfo.clockRate
+        rate: codecInfo.clockRate,
+        sessionType
       });
-
+      
       // Create RTP session
       const rtpSession = await this.rtpManager.createSession({
         remoteAddress: remoteAddr,
         remotePort: remotePort,
         codec: codecInfo,
         sessionId: callContext.callId,
-        sessionType: 'echo'
+        sessionType,
+        openaiConfig: this.config.openai,
+        caller: {
+          phoneNumber: this.extractPhoneNumber(callContext.from),
+          diversionHeader: callContext.diversion
+        },
+        onHangUpRequested: async () => {
+          callLogger.info('AI assistant requested to hang up call');
+          
+          // First, immediately stop the RTP session to close OpenAI connection
+          try {
+            await this.rtpManager.destroySession(callContext.callId);
+            callLogger.debug('RTP session destroyed after AI hang up request');
+          } catch (error) {
+            callLogger.error('Error destroying RTP session during hang up', error);
+          }
+          
+          // Then destroy the dialog to end the call
+          if (callContext.dialogId) {
+            const dialog = this.activeDialogs.get(callContext.dialogId);
+            if (dialog) {
+              dialog.destroy();
+              return;
+            }
+          }
+          
+          // Fallback: log that we couldn't find the dialog
+          callLogger.warn('Could not find dialog to hang up call', { 
+            dialogId: callContext.dialogId 
+          });
+        }
       });
 
       const sessionConfig = rtpSession.getConfig();
@@ -128,9 +168,17 @@ export class SipHandler {
     return match?.[1] ?? header;
   }
 
-  private extractCodecInfo(audioMedia: any): ExtractedCodecInfo | null {
-    // Look for supported codecs in order of preference
-    const supportedCodecs = ['opus', 'pcmu', 'pcma', 'g722'];
+  private extractPhoneNumber(sipUri: string): string {
+    // Extract phone number from SIP URI like: sip:+380123456789@domain or sip:123456789@domain
+    const match = sipUri.match(/sip:([^@]+)@/);
+    return match?.[1] ?? 'unknown';
+  }
+
+  private extractCodecInfo(audioMedia: any, sessionType: 'echo' | 'bridge'): ExtractedCodecInfo | null {
+    // Different codec support based on session type
+    const supportedCodecs = sessionType === 'bridge' 
+      ? ['pcma', 'pcmu']  // OpenAI only supports G.711 A-law and μ-law
+      : ['opus', 'pcmu', 'pcma', 'g722'];  // Echo mode supports all codecs
     
     for (const rtpInfo of audioMedia.rtp) {
       const codecName = rtpInfo.codec.toLowerCase();
@@ -225,9 +273,13 @@ export class SipHandler {
     dialog.on('destroy', async () => {
       logger.info('Call ended');
       
-      // Destroy RTP session
+      // Destroy RTP session (if not already destroyed by hang up callback)
       try {
-        await this.rtpManager.destroySession(context.callId);
+        const session = this.rtpManager.getSession(context.callId);
+        if (session) {
+          await this.rtpManager.destroySession(context.callId);
+          logger.debug('RTP session destroyed on dialog destroy');
+        }
       } catch (error) {
         logger.error('Error destroying RTP session', error);
       }

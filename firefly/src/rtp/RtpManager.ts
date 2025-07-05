@@ -1,7 +1,8 @@
 import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
+import { RtpBridgeSession, RtpBridgeSessionConfig } from './RtpBridgeSession';
 import { RtpSessionConfig, CodecInfo } from './types';
-import { RtpConfig } from '../config/types';
+import { RtpConfig, OpenAIConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RtpPortAllocationError, RtpSessionError } from '../utils/errors';
 
@@ -10,7 +11,14 @@ export interface CreateSessionOptions {
   remotePort: number;
   codec: CodecInfo;
   sessionId: string;
-  sessionType?: 'echo' | 'bridge'; // For future OpenAI bridge support
+  sessionType?: 'echo' | 'bridge';
+  // OpenAI bridge specific options
+  openaiConfig?: OpenAIConfig;
+  caller?: {
+    phoneNumber?: string;
+    diversionHeader?: string;
+  };
+  onHangUpRequested?: () => Promise<void>;
 }
 
 export class RtpManager {
@@ -56,11 +64,32 @@ export class RtpManager {
       // Create appropriate session type
       let session: RtpSession;
       switch (options.sessionType) {
+        case 'bridge':
+          if (!options.openaiConfig || !options.openaiConfig.enabled) {
+            throw new RtpSessionError('Bridge session requires OpenAI configuration', { 
+              sessionId: options.sessionId 
+            });
+          }
+          if (!options.openaiConfig.apiKey) {
+            throw new RtpSessionError('Bridge session requires OpenAI API key', { 
+              sessionId: options.sessionId 
+            });
+          }
+          
+          const bridgeConfig: RtpBridgeSessionConfig = {
+            ...sessionConfig,
+            openaiApiKey: options.openaiConfig.apiKey,
+            jitterBufferMs: this.rtpConfig.jitterBufferMs,
+            caller: options.caller,
+            onHangUpRequested: options.onHangUpRequested
+          };
+          session = new RtpBridgeSession(bridgeConfig);
+          break;
+          
         case 'echo':
         default:
           session = new RtpEchoSession(sessionConfig);
           break;
-        // Future: case 'bridge': session = new RtpBridgeSession(sessionConfig);
       }
 
       // Start the session

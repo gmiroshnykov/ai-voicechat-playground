@@ -6,7 +6,7 @@ A production-ready SIP service built with TypeScript that bridges telephone call
 
 - **SIP Registration**: Registers as a SIP endpoint with any SIP server
 - **Call Handling**: Accepts incoming SIP calls with proper SDP negotiation
-- **RTP Processing**: Currently echoes RTP packets (ready for OpenAI bridge implementation)
+- **OpenAI Integration**: Bridges telephone calls directly to OpenAI Realtime API with G.711 support
 - **Codec Support**: OPUS, PCMU (G.711 μ-law), PCMA (G.711 A-law), G.722
 - **NAT Traversal**: Symmetric RTP/RTCP with dynamic latching
 - **RTCP Reports**: Sends periodic sender reports for call quality
@@ -19,16 +19,18 @@ A production-ready SIP service built with TypeScript that bridges telephone call
 ```
 Caller → SIP Server → drachtio-server → Firefly (TypeScript)
            ↓                                    ↓
-         [RTP] ←──────── echo ──────────── [RTP Handler]
+         [RTP] ←────── G.711 PCMA ──────── [RTP Handler]
                                                ↓
-                                    (Future: OpenAI Realtime API)
+                                     OpenAI Realtime API
+                                        (WebSocket)
 ```
 
 ### Key Components
 
 - **Config Module**: Type-safe environment configuration with validation
-- **SIP Module**: Registration and call handling with drachtio-srf
-- **RTP Module**: Modular RTP/RTCP session management
+- **SIP Module**: Registration and call handling with drachtio-srf  
+- **RTP Module**: Modular RTP/RTCP session management with OpenAI bridge
+- **OpenAI Module**: WebSocket connection to Realtime API with G.711 audio streaming
 - **Utils**: Structured logging and custom error handling
 
 ## Prerequisites
@@ -60,18 +62,28 @@ npm run build
 
 Environment variables are managed by direnv in the project root. Key variables:
 
+### Core Settings
 - `SIP_PROVIDER`: "freeswitch" (default) or "kyivstar"
 - `LOCAL_IP`: Your machine's IP address (required)
+- `LOG_LEVEL`: trace, debug, info, warn, error (default: info)
+
+### SIP Configuration
 - `SIP_DOMAIN`: SIP server domain
 - `SIP_USERNAME`: SIP registration username
 - `SIP_PASSWORD`: SIP registration password
 - `SIP_PORT`: SIP server port (default: 5060)
+
+### Drachtio Configuration
 - `DRACHTIO_HOST`: drachtio-server host (default: 127.0.0.1)
 - `DRACHTIO_PORT`: drachtio-server port (default: 9022)
 - `DRACHTIO_SECRET`: drachtio-server secret (default: cymru)
+
+### RTP Configuration
 - `RTP_PORT_MIN`: Minimum RTP port (default: 10000)
 - `RTP_PORT_MAX`: Maximum RTP port (default: 20000)
-- `LOG_LEVEL`: debug, info, warn, error (default: info)
+
+### OpenAI Configuration
+- `OPENAI_API_KEY`: Your OpenAI API key (required for chat mode)
 
 ### Provider-Specific Configuration
 
@@ -86,11 +98,14 @@ Environment variables are managed by direnv in the project root. Key variables:
 ## Running
 
 ```bash
-# Development (build and run)
+# Echo mode (default) - RTP packets are echoed back
 npm start
 
+# Chat mode - Bridge calls to OpenAI Realtime API  
+npm start -- --mode chat
+
 # Production (pre-built)
-node dist/index.js
+node dist/index.js --mode chat
 
 # Type checking only
 npm run typecheck
@@ -98,6 +113,19 @@ npm run typecheck
 # Clean build artifacts
 npm run clean
 ```
+
+### Modes
+
+**Echo Mode** (`--mode echo` or default):
+- Traditional RTP echo service
+- Good for VoIP testing and connectivity verification
+
+**Chat Mode** (`--mode chat`):
+- Bridges phone calls to OpenAI Realtime API
+- Requires `OPENAI_API_KEY` environment variable
+- AI agent starts conversation in Ukrainian
+- Supports hang up via AI assistant
+- No transcoding - direct G.711 PCMA audio streaming
 
 ## Testing with FreeSWITCH
 
@@ -134,6 +162,7 @@ src/
 ├── rtp/
 │   ├── RtpSession.ts    # Base RTP session class
 │   ├── RtpEchoSession.ts # Echo implementation
+│   ├── RtpBridgeSession.ts # OpenAI bridge implementation
 │   ├── RtpManager.ts    # Port allocation & lifecycle
 │   ├── RtcpHandler.ts   # RTCP reports
 │   ├── CodecHandler.ts  # Codec-specific logic
@@ -145,14 +174,15 @@ src/
     └── external.d.ts    # External library types
 ```
 
-### Adding OpenAI Bridge
+### OpenAI Bridge Implementation
 
-To add OpenAI Realtime API support:
+The OpenAI Realtime API integration includes:
 
-1. Create `RtpBridgeSession` extending `RtpSession`
-2. Implement WebSocket connection to OpenAI
-3. Convert RTP audio to/from OpenAI format
-4. Handle session lifecycle and error cases
+1. **RtpBridgeSession**: Extends `RtpSession` with OpenAI WebSocket connection
+2. **Audio Processing**: Direct G.711 PCMA streaming without transcoding
+3. **Session Management**: Proper connection lifecycle and error handling
+4. **AI Tools**: Hang up functionality for conversation completion
+5. **Multi-language**: Starts in Ukrainian, switches to English on request
 
 ### Type Safety
 
@@ -170,16 +200,24 @@ The application provides structured JSON logging with:
 - Session lifecycle events
 - Error tracking with stack traces
 
+## Features Implemented
+
+- [x] OpenAI Realtime API integration with G.711 PCMA
+- [x] Ukrainian/English language switching
+- [x] AI-controlled call termination
+- [x] Real-time audio streaming without transcoding
+- [x] Proper cleanup and resource management
+
 ## Future Enhancements
 
-- [ ] OpenAI Realtime API integration
 - [ ] WebSocket control interface
-- [ ] Prometheus metrics export
+- [ ] Prometheus metrics export  
 - [ ] Call recording to S3
 - [ ] Dynamic codec transcoding
 - [ ] DTMF detection and handling
 - [ ] Conference bridge support
 - [ ] REST API for call control
+- [ ] Call transfer capabilities
 
 ## License
 

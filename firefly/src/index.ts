@@ -1,9 +1,22 @@
 import Srf from 'drachtio-srf';
+import { Command } from 'commander';
 import { config } from './config';
 import { RtpManager } from './rtp/RtpManager';
 import { SipRegistrar } from './sip/SipRegistrar';
 import { SipHandler } from './sip/SipHandler';
 import { logger } from './utils/logger';
+
+// Parse CLI arguments
+const program = new Command();
+program
+  .name('firefly')
+  .description('SIP/RTP bridge with OpenAI Realtime API integration')
+  .version('1.0.0')
+  .option('-m, --mode <mode>', 'operational mode: echo or chat', 'echo')
+  .parse();
+
+const options = program.opts();
+const mode = options.mode === 'chat' ? 'chat' : 'echo';
 
 // Create main components
 const srf = new Srf();
@@ -15,7 +28,8 @@ async function startApplication(): Promise<void> {
   logger.info('Starting Firefly', {
     environment: config.environment,
     sipProvider: config.sip.provider,
-    logLevel: config.logLevel
+    logLevel: config.logLevel,
+    mode: mode
   });
 
   // Connect to drachtio server
@@ -23,7 +37,7 @@ async function startApplication(): Promise<void> {
 
   // Initialize SIP components
   sipRegistrar = new SipRegistrar(srf, config.sip, config.drachtio);
-  sipHandler = new SipHandler(srf, rtpManager, config);
+  sipHandler = new SipHandler(srf, rtpManager, config, mode);
 
   // Handle registration events
   sipRegistrar.on('registered', () => {
