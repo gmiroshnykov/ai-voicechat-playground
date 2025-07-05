@@ -23,5 +23,8 @@ freeswitch/db/
 # Network captures
 *.pcap
 
+# Call recordings
+firefly/recordings/
+
 # Ephemeral documents
 TODO.md

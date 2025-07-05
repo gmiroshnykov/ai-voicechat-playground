@@ -5,8 +5,9 @@ import { RtpSession } from './RtpSession';
 import { RtcpHandler } from './RtcpHandler';
 import { CodecHandler } from './CodecHandler';
 import { JitterBuffer } from './JitterBuffer';
+import { CallRecorder, CallRecorderConfig } from './CallRecorder';
 import { RtpSessionConfig, FrameSizeDetection, CodecType, RtpPacketInfo } from './types';
-import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME } from '../config/types';
+import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, RecordingConfig } from '../config/types';
 
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
@@ -14,6 +15,7 @@ type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
 export interface RtpBridgeSessionConfig extends RtpSessionConfig {
   openaiApiKey: string;
   jitterBufferMs?: number; // Default: 40ms
+  recordingConfig?: RecordingConfig;
   caller?: {
     phoneNumber?: string;
     diversionHeader?: string;
@@ -46,6 +48,9 @@ export class RtpBridgeSession extends RtpSession {
   
   // Jitter buffer for packet reordering and loss handling
   private jitterBuffer?: JitterBuffer;
+  
+  // Call recording
+  private callRecorder?: CallRecorder;
 
   constructor(sessionConfig: RtpBridgeSessionConfig) {
     super(sessionConfig);
@@ -81,12 +86,32 @@ export class RtpBridgeSession extends RtpSession {
       bufferTimeMs: jitterBufferMs,
       codecInfo: this.bridgeConfig.codec,
       onPacketReady: (packet: RtpPacketInfo) => {
-        this.forwardToOpenAI(packet);
+        this.processCleanAudio(packet);
       },
       onPacketLost: (sequenceNumber: number) => {
         this.handlePacketLoss(sequenceNumber);
       }
     });
+    
+    // Initialize call recorder if recording is enabled
+    if (this.bridgeConfig.recordingConfig?.enabled) {
+      const callerSipUri = this.bridgeConfig.caller?.diversionHeader || 
+                          `sip:${this.bridgeConfig.caller?.phoneNumber || 'unknown'}@unknown`;
+      
+      const recorderConfig: CallRecorderConfig = {
+        enabled: true,
+        recordingsPath: this.bridgeConfig.recordingConfig!.recordingsPath,
+        callId: sessionConfig.sessionId || `call-${Date.now()}`,
+        caller: {
+          phoneNumber: this.bridgeConfig.caller?.phoneNumber,
+          sipUri: callerSipUri
+        },
+        diversion: this.bridgeConfig.caller?.diversionHeader,
+        codec: this.bridgeConfig.codec
+      };
+      
+      this.callRecorder = new CallRecorder(recorderConfig);
+    }
   }
 
   protected async onStart(): Promise<void> {
@@ -124,6 +149,11 @@ export class RtpBridgeSession extends RtpSession {
       // Stop keepalive packets once OpenAI is connected or if connection fails
       clearInterval(keepaliveInterval);
     }
+    
+    // Start call recording if enabled
+    if (this.callRecorder) {
+      await this.callRecorder.start();
+    }
   }
 
   protected async onStop(): Promise<void> {
@@ -147,6 +177,12 @@ export class RtpBridgeSession extends RtpSession {
     if (this.jitterBuffer) {
       this.jitterBuffer.destroy();
       this.jitterBuffer = undefined;
+    }
+    
+    // Stop call recording
+    if (this.callRecorder) {
+      await this.callRecorder.stop();
+      this.callRecorder = undefined;
     }
 
     // Disconnect from OpenAI
@@ -269,13 +305,30 @@ export class RtpBridgeSession extends RtpSession {
           outputFormat: event.session?.output_audio_format
         });
       } else if (event.type === 'error') {
-        this.logger.error('OpenAI transport error', event.error);
+        this.logger.error('OpenAI transport error', {
+          errorMessage: event.error?.message || 'Unknown error',
+          errorType: event.error?.type || 'unknown',
+          errorCode: event.error?.code || 'unknown',
+          fullError: event.error
+        });
+      } else {
+        // Log all other events at trace level
+        this.logger.trace('OpenAI transport event', {
+          eventType: event.type,
+          event: event
+        });
       }
     });
 
     // Handle errors
     this.realtimeSession.on('error', (error) => {
-      this.logger.error('OpenAI session error', error);
+      this.logger.error('OpenAI session error', {
+        errorMessage: (error as any)?.message || 'Unknown error',
+        errorStack: (error as any)?.stack,
+        errorName: (error as any)?.name,
+        errorType: typeof error,
+        fullError: String(error)
+      });
     });
 
     // Note: connection events will be handled via the session lifecycle
@@ -354,6 +407,9 @@ export class RtpBridgeSession extends RtpSession {
         payloadView.byteOffset,
         payloadView.byteLength
       );
+
+      // Note: Caller audio recording moved to post-jitter-buffer processing 
+      // to ensure we record the same clean audio that OpenAI receives
 
       // Create packet info for jitter buffer
       const packetInfo: RtpPacketInfo = {
@@ -451,6 +507,11 @@ export class RtpBridgeSession extends RtpSession {
   }
 
   private sendRtpPacket(payload: Buffer, marker: boolean = false): void {
+    // Add AI audio to continuous recording timeline when sending to caller
+    if (this.callRecorder && this.isPlayingAudio) {
+      this.callRecorder.addAIAudio(payload);
+    }
+
     // Update RTP packet fields
     this.rtpPacket.setMarker(marker);
     this.rtpPacket.setPayload(rtpJsUtils.nodeBufferToDataView(payload));
@@ -481,6 +542,9 @@ export class RtpBridgeSession extends RtpSession {
   }
 
   private chunkAndSendAudio(audioBuffer: Buffer): void {
+    // Note: AI audio recording moved to sendRtpPacket() to ensure proper timing sync
+    // with caller audio (both recorded when actually sent/received, not when buffered)
+    
     const chunkSize = 160; // G.711 PCMA: 160 bytes = 20ms at 8kHz
     let offset = 0;
     const chunks: Buffer[] = [];
@@ -533,7 +597,7 @@ export class RtpBridgeSession extends RtpSession {
     // Send next packet
     const nextChunk = this.audioQueue.shift();
     if (nextChunk) {
-      this.sendRtpPacket(nextChunk);
+      this.sendRtpPacket(nextChunk); // No need for AI audio flag anymore
       
       // Schedule next packet in 20ms
       this.packetTimer = setTimeout(() => {
@@ -547,7 +611,20 @@ export class RtpBridgeSession extends RtpSession {
   }
 
   /**
-   * Forward a packet from the jitter buffer to OpenAI
+   * Process clean audio from jitter buffer - handles both recording and OpenAI forwarding
+   */
+  private processCleanAudio(packet: RtpPacketInfo): void {
+    // Add caller audio to continuous recording timeline
+    if (this.callRecorder) {
+      this.callRecorder.addCallerAudio(packet.payload);
+    }
+
+    // Forward to OpenAI
+    this.forwardToOpenAI(packet);
+  }
+
+  /**
+   * Forward a packet to OpenAI Realtime API
    */
   private forwardToOpenAI(packet: RtpPacketInfo): void {
     if (!this.isConnectedToOpenAI || !this.realtimeSession) {
@@ -590,8 +667,8 @@ export class RtpBridgeSession extends RtpSession {
       payload: silencePayload
     };
     
-    // Forward comfort noise to OpenAI
-    this.forwardToOpenAI(comfortNoisePacket);
+    // Process comfort noise (both record and forward to OpenAI)
+    this.processCleanAudio(comfortNoisePacket);
   }
 
   /**
@@ -599,5 +676,15 @@ export class RtpBridgeSession extends RtpSession {
    */
   public getJitterBufferStats() {
     return this.jitterBuffer?.getStats() ?? null;
+  }
+
+  /**
+   * Flush any remaining packets from jitter buffer immediately
+   * This ensures all received audio is processed before session ends
+   */
+  public flushJitterBuffer(): void {
+    if (this.jitterBuffer) {
+      this.jitterBuffer.flush();
+    }
   }
 }

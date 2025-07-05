@@ -2,7 +2,7 @@ import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
 import { RtpBridgeSession, RtpBridgeSessionConfig } from './RtpBridgeSession';
 import { RtpSessionConfig, CodecInfo } from './types';
-import { RtpConfig, OpenAIConfig } from '../config/types';
+import { RtpConfig, OpenAIConfig, RecordingConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RtpPortAllocationError, RtpSessionError } from '../utils/errors';
 
@@ -14,6 +14,7 @@ export interface CreateSessionOptions {
   sessionType?: 'echo' | 'bridge';
   // OpenAI bridge specific options
   openaiConfig?: OpenAIConfig;
+  recordingConfig?: RecordingConfig;
   caller?: {
     phoneNumber?: string;
     diversionHeader?: string;
@@ -80,6 +81,7 @@ export class RtpManager {
             ...sessionConfig,
             openaiApiKey: options.openaiConfig.apiKey,
             jitterBufferMs: this.rtpConfig.jitterBufferMs,
+            recordingConfig: options.recordingConfig,
             caller: options.caller,
             onHangUpRequested: options.onHangUpRequested
           };
@@ -145,6 +147,14 @@ export class RtpManager {
 
   public getSession(sessionId: string): RtpSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  public flushSessionJitterBuffer(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session && 'flushJitterBuffer' in session) {
+      this.logger.debug('Flushing jitter buffer for session', { sessionId });
+      (session as any).flushJitterBuffer();
+    }
   }
 
   public getAllSessions(): Map<string, RtpSession> {

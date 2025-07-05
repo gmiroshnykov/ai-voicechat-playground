@@ -80,6 +80,7 @@ export class SipHandler {
         sessionId: callContext.callId,
         sessionType,
         openaiConfig: this.config.openai,
+        recordingConfig: this.config.recording,
         caller: {
           phoneNumber: this.extractPhoneNumber(callContext.from),
           diversionHeader: callContext.diversion
@@ -87,7 +88,19 @@ export class SipHandler {
         onHangUpRequested: async () => {
           callLogger.info('AI assistant requested to hang up call');
           
-          // First, immediately stop the RTP session to close OpenAI connection
+          // First, flush any remaining packets from jitter buffer to ensure all caller audio is captured
+          try {
+            callLogger.debug('Flushing jitter buffer before hangup');
+            this.rtpManager.flushSessionJitterBuffer(callContext.callId);
+          } catch (error) {
+            callLogger.error('Error flushing jitter buffer during hangup', error);
+          }
+          
+          // Give time for the flushed audio to be processed and recorded
+          // This ensures the complete conversation including final caller words is captured
+          await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 500ms
+          
+          // Then stop the RTP session to close OpenAI connection
           try {
             await this.rtpManager.destroySession(callContext.callId);
             callLogger.debug('RTP session destroyed after AI hang up request');
@@ -95,7 +108,7 @@ export class SipHandler {
             callLogger.error('Error destroying RTP session during hang up', error);
           }
           
-          // Then destroy the dialog to end the call
+          // Finally destroy the dialog to end the call
           if (callContext.dialogId) {
             const dialog = this.activeDialogs.get(callContext.dialogId);
             if (dialog) {

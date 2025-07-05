@@ -52,6 +52,17 @@ function validateLogLevel(level: string): "trace" | "debug" | "info" | "warn" | 
   return level as "trace" | "debug" | "info" | "warn" | "error";
 }
 
+function validateBooleanEnv(value: string): boolean {
+  const lowerValue = value.toLowerCase();
+  if (lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes') {
+    return true;
+  }
+  if (lowerValue === 'false' || lowerValue === '0' || lowerValue === 'no' || lowerValue === '') {
+    return false;
+  }
+  throw new ConfigurationError(`Invalid boolean value: ${value}. Must be true, false, 1, 0, yes, no, or empty`);
+}
+
 export function loadConfig(): AppConfig {
   try {
     const provider = validateSipProvider(getOptionalEnv('SIP_PROVIDER', 'freeswitch'));
@@ -101,11 +112,18 @@ export function loadConfig(): AppConfig {
       apiKey: openaiApiKey
     };
 
+    // Recording config
+    const recordingConfig = {
+      enabled: validateBooleanEnv(getOptionalEnv('CALL_RECORDING_ENABLED', 'false')),
+      recordingsPath: getOptionalEnv('CALL_RECORDINGS_PATH', './recordings')
+    };
+
     const config: AppConfig = {
       sip: sipConfig,
       drachtio: drachtioConfig,
       rtp: rtpConfig,
       openai: openaiConfig,
+      recording: recordingConfig,
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

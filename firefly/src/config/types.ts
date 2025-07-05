@@ -28,6 +28,11 @@ export interface OpenAIConfig {
   enabled: boolean;
 }
 
+export interface RecordingConfig {
+  enabled: boolean;
+  recordingsPath: string;
+}
+
 export const OPENAI_AGENT_NAME = 'Firefly Assistant';
 
 export const OPENAI_AGENT_INSTRUCTIONS = `You are a helpful voice assistant connected via telephone. Start the conversation in Ukrainian, but switch to English if the caller requests it or speaks English to you.
@@ -41,6 +46,7 @@ export interface AppConfig {
   drachtio: DrachtioConfig;
   rtp: RtpConfig;
   openai: OpenAIConfig;
+  recording: RecordingConfig;
   environment: string;
   logLevel: "trace" | "debug" | "info" | "warn" | "error";
 }
@@ -67,6 +73,9 @@ export interface EnvironmentVariables {
   OPENAI_ENABLED?: string;
   OPENAI_AGENT_NAME?: string;
   OPENAI_AGENT_INSTRUCTIONS?: string;
+  
+  CALL_RECORDING_ENABLED?: string;
+  CALL_RECORDINGS_PATH?: string;
   
   NODE_ENV?: string;
   LOG_LEVEL?: string;

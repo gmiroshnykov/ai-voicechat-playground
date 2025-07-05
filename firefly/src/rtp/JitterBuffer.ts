@@ -306,6 +306,48 @@ export class JitterBuffer {
     this.logger.info('JitterBuffer reset');
   }
 
+  public flush(): void {
+    // Immediately process all remaining packets in buffer, regardless of timeout
+    if (this.packetBuffer.size === 0) {
+      return;
+    }
+
+    this.logger.info('Flushing jitter buffer', { 
+      remainingPackets: this.packetBuffer.size 
+    });
+
+    // Stop any pending timer
+    if (this.bufferTimer) {
+      clearTimeout(this.bufferTimer);
+      this.bufferTimer = undefined;
+    }
+
+    // Get all buffered packets and sort by sequence number
+    const allPackets = Array.from(this.packetBuffer.values());
+    allPackets.sort((a, b) => {
+      // Handle wraparound by comparing in 16-bit space
+      const seqA = a.sequenceNumber & 0xFFFF;
+      const seqB = b.sequenceNumber & 0xFFFF;
+      
+      const diff = (seqB - seqA) & 0xFFFF;
+      return diff > 32768 ? -1 : (diff === 0 ? 0 : 1);
+    });
+
+    // Process all packets
+    for (const bufferedPacket of allPackets) {
+      this.config.onPacketReady(bufferedPacket.packet);
+      this.updateExpectedSequence(bufferedPacket.sequenceNumber);
+    }
+
+    // Clear the buffer
+    this.packetBuffer.clear();
+    this.stats.currentDepth = 0;
+
+    this.logger.info('Jitter buffer flushed', { 
+      flushedPackets: allPackets.length 
+    });
+  }
+
   public destroy(): void {
     this.reset();
     this.logger.info('JitterBuffer destroyed');
