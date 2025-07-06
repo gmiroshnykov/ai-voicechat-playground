@@ -1,103 +1,109 @@
-# AI Voice Chat Playground
+# Firefly VoIP Platform
 
-A comprehensive platform for real-time voice chat and audio processing, demonstrating multiple approaches to voice communication including OpenAI's Realtime API, WebRTC, and VoIP technologies.
+An experimental VoIP system that bridges telephone calls to OpenAI's Realtime API, enabling AI-powered voice conversations over traditional phone networks. This research project explores implementing production-grade telephony features including multi-tenant support and carrier integration, though currently tested only in development environments.
 
-## Features
+## Features (Current Implementation)
 
-- **Real-time Voice Chat:** Multiple implementations for conversing with AI
-- **VoIP Integration:** Complete VoIP solutions from simple echo services to full PBX
-- **Cross-Platform Audio:** CLI tools, web interfaces, and standalone services
-- **Flexible Architecture:** Mix-and-match components for different use cases
+- **PSTN-to-AI Bridge:** Direct telephone calls to OpenAI Realtime API (experimental)
+- **Advanced VoIP Handling:** SIP/RTP with NAT traversal, jitter buffer, packet loss recovery
+- **Call Recording:** Stereo audio recording with metadata storage
+- **Call Context Preservation:** Caller ID and call metadata extraction (via Diversion headers)
+- **Kyivstar Compatibility:** Designed for symmetric RTP and carrier-specific requirements
+- **Research-Grade Implementation:** Sophisticated packet handling and audio processing
+
+*Note: Multi-tenant routing and production reliability features are designed but require further testing with real carrier deployments.*
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+, Go 1.22+
+- Node.js 18+
 - OpenAI API Key (for AI chat features)
-- SIP credentials (for VoIP features)
+- SIP credentials or FreeSWITCH for testing
 
 ### Basic Setup
 
 ```bash
 git clone https://github.com/gmiroshnykov/ai-voicechat-playground.git
 cd ai-voicechat-playground
-npm install
-
-# Set up environment
-echo "OPENAI_API_KEY=your_api_key_here" > .env
 
 # Use devbox for consistent environment (recommended)
 devbox shell
-```
 
-For component-specific setup, see the documentation in each directory.
+# Set up Firefly service
+cd firefly
+npm install
+npm run build
+
+# Start FreeSWITCH for local testing
+cd ../freeswitch
+./run.sh
+```
 
 ## Components
 
-### CLI Tools ([bin/](bin/))
-Command-line voice chat and transcription tools using OpenAI's Realtime API.
-
-### Web Interface ([web/](web/))
-Browser-based WebRTC echo service with modern UI.
-
-### Backend Server ([server-go/](server-go/))
-Go-based WebRTC server with audio recording capabilities.
-
-### SIP Echo Service ([sip-echo/](sip-echo/))
-Standalone SIP/RTP echo service for VoIP testing (Go-based).
-
 ### Firefly VoIP Service ([firefly/](firefly/))
-Advanced TypeScript-based SIP/RTP service with OpenAI Realtime API integration, NAT traversal, and RTCP support. Provides both echo mode and AI chat mode for PSTN callers.
+The main experimental VoIP service - TypeScript-based SIP/RTP bridge to OpenAI Realtime API:
+- G.711 PCMA/PCMU direct passthrough (no transcoding)
+- Jitter buffer with packet loss recovery
+- Stereo call recording with metadata
+- Ukrainian/English AI assistant (experimental)
+- NAT traversal and RTCP support
 
 ### FreeSWITCH PBX ([freeswitch/](freeswitch/))
-Full-featured VoIP PBX with echo dialplan configuration.
+Local testing infrastructure - VoIP PBX for development and testing:
+- Pre-configured dialplan for Firefly integration
+- SIP user registration for local testing
+- Audio codec support
+- Call routing and management
 
-### Test Audio Files ([audio/](audio/))
-Sample audio files for testing various components.
+### Audio Test Files ([audio/](audio/))
+Sample audio files for testing and development.
 
 ## Architecture
 
 ```
-ai-voicechat-playground/
-├── bin/                   # CLI tools (Node.js)
-├── web/                   # Web interface (Next.js)
-├── server-go/            # Backend server (Go)
-├── sip-echo/             # SIP echo service (Go)
-├── firefly/              # Advanced VoIP echo service (TypeScript)
-├── freeswitch/           # VoIP PBX configuration
-└── audio/                # Test audio files
+PSTN/Mobile Phone → VoIP Provider/FreeSWITCH → Firefly (TypeScript) → OpenAI Realtime API
+                                                       ↓
+                                            Call Recording & Metadata
+```
+
+### Directory Structure
+```
+firefly-voip-platform/
+├── firefly/              # Main VoIP service (TypeScript)
+├── freeswitch/           # Local PBX for testing
+├── audio/                # Test audio files
+├── recordings/           # Call recordings (generated)
+└── docker-compose.yml    # Drachtio server
 ```
 
 ## Usage Patterns
 
-**For AI Voice Chat:**
-- Use `bin/chat` for command-line conversations
-- Use `web/` + `server-go/` for browser-based chat
+**Target Use Case (Designed For):**
+- Bridge PSTN calls via Kyivstar VoIP service to OpenAI Realtime API
+- Multi-tenant routing based on forwarding subscriber (Diversion headers)
+- Production telephony handling with concurrent calls and reliability
+- ⚠️ **Current Status**: Designed but only tested in development environments
 
-**For VoIP Testing:**
-- Use `sip-echo/` for lightweight Go-based SIP echo testing
-- Use `firefly/` for advanced TypeScript-based SIP echo with NAT traversal
-- Use `freeswitch/` for full PBX functionality
-
-**For PSTN-to-AI Bridge:**
+**Current Experimental Testing:**
 - Use `firefly/` with `--mode chat` to bridge phone calls to OpenAI Realtime API
-- Supports G.711 PCMA with no transcoding for low latency
+- Tested with personal laptop setup and VoIP provider credentials
+- G.711 PCMA direct passthrough for minimal latency
 - AI agent starts in Ukrainian, switches to English when prompted
 
-**For Development:**
-- Use `bin/` tools for API testing and audio verification
-- Use `audio/` files for consistent testing
+**Local Development and Testing:**
+- Use `freeswitch/` PBX for local SIP testing without carrier costs
+- Use `firefly/` with `--mode echo` for audio echo testing
+- Test with any SIP client (softphone apps)
+- Mock call forwarding scenarios and various call flows
 
 ## Documentation
 
-- **[CLI Tools Guide](bin/README.md)** - Command-line tools for voice chat and transcription
-- **[Web Interface Guide](web/README.md)** - Browser-based voice chat setup
-- **[Backend Server Guide](server-go/README.md)** - WebRTC server architecture
-- **[SIP Echo Guide](sip-echo/README.md)** - Standalone Go-based SIP service configuration
-- **[Firefly Guide](firefly/README.md)** - Advanced TypeScript-based VoIP service with OpenAI integration and NAT traversal
-- **[FreeSWITCH Guide](freeswitch/README.md)** - VoIP PBX deployment
+- **[Firefly Guide](firefly/README.md)** - Main experimental VoIP service with OpenAI integration
+- **[FreeSWITCH Guide](freeswitch/README.md)** - Local PBX setup for testing and development
 - **[Audio Files Guide](audio/README.md)** - Test audio specifications
+- **[DESIGN.md](DESIGN.md)** - System architecture and design decisions
 
 ## Development
 
@@ -105,21 +111,37 @@ Use [Devbox](https://www.jetify.com/devbox) for consistent development environme
 
 ```bash
 devbox shell
+cd firefly
+npm install
+npm run build
+npm start -- --mode chat  # or --mode echo for testing
 ```
 
-Each component has its own dependencies and setup instructions - see the individual READMEs for details.
+## Current Status
 
-## Security
+This project implements the core architecture designed for production Kyivstar VoIP integration with multi-tenant support, but remains experimental. Current validation is limited to:
+
+- ✅ **Basic PSTN-to-AI bridging** with personal VoIP provider testing
+- ✅ **Sophisticated packet handling** including jitter buffer and loss recovery
+- ✅ **Call recording and metadata extraction** 
+- ✅ **Diversion header parsing** for call context preservation
+- ⚠️ **Not yet validated**: Multi-tenant routing in production carrier environments
+- ⚠️ **Not yet validated**: Concurrent call handling under real load
+- ⚠️ **Not yet validated**: Production reliability and error recovery with real users
+
+The technical implementation follows production design principles but requires carrier deployment validation to meet the full objectives outlined in DESIGN.md.
+
+## Security Notes
 
 - Never commit credentials or API keys to version control
-- Use `.env` files for sensitive configuration
-- Configure network ACLs for VoIP services
-- Review logs regularly for unauthorized access
+- Use `.envrc.local` for sensitive configuration (VoIP provider credentials)
+- Call recordings may contain sensitive information - secure appropriately
+- ⚠️ **Research Use**: Not yet security-audited for production deployment
+
+## Contributing
+
+This project was developed collaboratively with Claude Code, Gemini, and OpenAI Codex as an exploration of AI-assisted software engineering.
 
 ## License
 
 This project is licensed under the AGPL-3.0 License.
-
-## Contributing
-
-This project was developed collaboratively with Claude Code, Gemini, and OpenAI Codex.
