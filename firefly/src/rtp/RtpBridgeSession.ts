@@ -7,7 +7,8 @@ import { CodecHandler } from './CodecHandler';
 import { JitterBuffer } from './JitterBuffer';
 import { CallRecorder, CallRecorderConfig } from './CallRecorder';
 import { RtpSessionConfig, FrameSizeDetection, CodecType, RtpPacketInfo } from './types';
-import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, RecordingConfig } from '../config/types';
+import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, RecordingConfig, TranscriptionConfig } from '../config/types';
+import { TranscriptionManager, TranscriptEntry } from './TranscriptionManager';
 
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
@@ -16,6 +17,7 @@ export interface RtpBridgeSessionConfig extends RtpSessionConfig {
   openaiApiKey: string;
   jitterBufferMs?: number; // Default: 40ms
   recordingConfig?: RecordingConfig;
+  transcriptionConfig?: TranscriptionConfig;
   caller?: {
     phoneNumber?: string;
     diversionHeader?: string;
@@ -51,6 +53,9 @@ export class RtpBridgeSession extends RtpSession {
   
   // Call recording
   private callRecorder?: CallRecorder;
+  
+  // Transcription management
+  private transcriptionManager?: TranscriptionManager;
 
   constructor(sessionConfig: RtpBridgeSessionConfig) {
     super(sessionConfig);
@@ -111,6 +116,20 @@ export class RtpBridgeSession extends RtpSession {
       };
       
       this.callRecorder = new CallRecorder(recorderConfig);
+    }
+    
+    // Initialize transcription manager if transcription is enabled
+    if (this.bridgeConfig.transcriptionConfig?.enabled) {
+      this.transcriptionManager = new TranscriptionManager({
+        transcriptionConfig: this.bridgeConfig.transcriptionConfig,
+        callId: sessionConfig.sessionId || `call-${Date.now()}`,
+        onTranscriptReceived: (entry: TranscriptEntry) => {
+          // Forward transcripts to call recorder if recording is enabled
+          if (this.callRecorder) {
+            this.callRecorder.addCompletedTranscript(entry.speaker, entry.text, entry.timestamp);
+          }
+        }
+      });
     }
   }
 
@@ -184,6 +203,12 @@ export class RtpBridgeSession extends RtpSession {
       await this.callRecorder.stop();
       this.callRecorder = undefined;
     }
+    
+    // Clean up transcription manager
+    if (this.transcriptionManager) {
+      this.transcriptionManager.clear();
+      this.transcriptionManager = undefined;
+    }
 
     // Disconnect from OpenAI
     await this.disconnectFromOpenAI();
@@ -238,16 +263,22 @@ export class RtpBridgeSession extends RtpSession {
       // Create session with WebSocket transport and G.711 configuration
       const audioFormat = this.bridgeConfig.codec.name === CodecType.PCMU ? 'g711_ulaw' : 'g711_alaw';
       
+      // Configure transcription if enabled
+      const sessionConfig: any = {
+        inputAudioFormat: audioFormat,
+        outputAudioFormat: audioFormat
+      };
+      
+      if (this.bridgeConfig.transcriptionConfig?.enabled) {
+        sessionConfig.inputAudioTranscription = {
+          model: this.bridgeConfig.transcriptionConfig.model,
+        };
+      }
+      
       this.realtimeSession = new RealtimeSession(this.realtimeAgent, {
         model: 'gpt-4o-realtime-preview-2025-06-03',
         transport: 'websocket',
-        config: {
-          inputAudioFormat: audioFormat,
-          outputAudioFormat: audioFormat,
-          inputAudioTranscription: {
-            model: 'gpt-4o-mini-transcribe',
-          }
-        }
+        config: sessionConfig
       });
 
       // Set up event handlers
@@ -259,7 +290,7 @@ export class RtpBridgeSession extends RtpSession {
       });
 
       this.isConnectedToOpenAI = true;
-      this.logger.info('Connected to OpenAI Realtime API', {
+      this.logger.debug('Connected to OpenAI Realtime API', {
         agent: OPENAI_AGENT_NAME,
         codec: this.bridgeConfig.codec.name === CodecType.PCMU ? 'G.711 μ-law' : 'G.711 A-law',
         audioFormat
@@ -295,12 +326,18 @@ export class RtpBridgeSession extends RtpSession {
   private setupOpenAIEventHandlers(): void {
     if (!this.realtimeSession) return;
 
-    // Handle audio deltas from OpenAI
+    // Use transport layer events for audio and transcripts
     this.realtimeSession.on('transport_event', (event: any) => {
       if (event.type === 'response.audio.delta') {
         this.handleOpenAIAudio(event);
+      } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
+        // Handle completed user (caller) transcript
+        this.handleCallerTranscript(event);
+      } else if (event.type === 'response.audio_transcript.done') {
+        // Handle completed AI transcript
+        this.handleAITranscriptDone(event);
       } else if (event.type === 'session.updated') {
-        this.logger.info('Session updated', {
+        this.logger.debug('Session updated', {
           inputFormat: event.session?.input_audio_format,
           outputFormat: event.session?.output_audio_format
         });
@@ -312,13 +349,13 @@ export class RtpBridgeSession extends RtpSession {
           fullError: event.error
         });
       } else {
-        // Log all other events at trace level
+        // Log all other events at trace level only
         this.logger.trace('OpenAI transport event', {
-          eventType: event.type,
-          event: event
+          eventType: event.type
         });
       }
     });
+
 
     // Handle errors
     this.realtimeSession.on('error', (error) => {
@@ -372,7 +409,7 @@ export class RtpBridgeSession extends RtpSession {
         this.config.remoteAddress !== rinfo.address || 
         this.config.remotePort !== rinfo.port) {
       
-      this.logger.info('RTP latching to source', {
+      this.logger.debug('RTP latching to source', {
         address: rinfo.address,
         port: rinfo.port,
         wasExpecting: `${this.config.remoteAddress}:${this.config.remotePort}`
@@ -447,6 +484,39 @@ export class RtpBridgeSession extends RtpSession {
     }
   }
 
+
+  private handleCallerTranscript(event: any): void {
+    if (!this.transcriptionManager) {
+      return;
+    }
+
+    try {
+      const transcript = event.transcript;
+      if (transcript && transcript.trim()) {
+        this.transcriptionManager.addCompletedTranscript('caller', transcript);
+      }
+    } catch (error) {
+      this.logger.error('Error handling caller transcript', error);
+    }
+  }
+
+  private handleAITranscriptDone(event: any): void {
+    if (!this.transcriptionManager) {
+      return;
+    }
+
+    try {
+      // The complete AI transcript is in event.transcript for the done event
+      const transcript = event.transcript;
+      if (transcript && transcript.trim() && transcript !== '\n') {
+        this.transcriptionManager.addCompletedTranscript('ai', transcript);
+      }
+    } catch (error) {
+      this.logger.error('Error handling AI transcript done', error);
+    }
+  }
+
+
   private detectFrameSize(packet: RtpPacket): void {
     const timestamp = packet.getTimestamp();
     const seqNum = packet.getSequenceNumber();
@@ -475,7 +545,7 @@ export class RtpBridgeSession extends RtpSession {
               payloadSamples === timestampDiff && 
               !this.frameSizeDetection.frameSizeConfirmed) {
             
-            this.logger.info('Dynamic frame size confirmed', {
+            this.logger.debug('Dynamic frame size confirmed', {
               samples: timestampDiff,
               payloadBytes: payloadLength,
               codec: this.config.codec.name

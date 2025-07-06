@@ -33,6 +33,12 @@ export interface RecordingConfig {
   recordingsPath: string;
 }
 
+export interface TranscriptionConfig {
+  enabled: boolean;
+  model: string;
+  displayToConsole: boolean;
+}
+
 export const OPENAI_AGENT_NAME = 'Firefly Assistant';
 
 export const OPENAI_AGENT_INSTRUCTIONS = `You are a helpful voice assistant connected via telephone. Start the conversation in Ukrainian, but switch to English if the caller requests it or speaks English to you.
@@ -47,6 +53,7 @@ export interface AppConfig {
   rtp: RtpConfig;
   openai: OpenAIConfig;
   recording: RecordingConfig;
+  transcription: TranscriptionConfig;
   environment: string;
   logLevel: "trace" | "debug" | "info" | "warn" | "error";
 }
@@ -76,6 +83,10 @@ export interface EnvironmentVariables {
   
   CALL_RECORDING_ENABLED?: string;
   CALL_RECORDINGS_PATH?: string;
+  
+  TRANSCRIPTION_ENABLED?: string;
+  TRANSCRIPTION_MODEL?: string;
+  TRANSCRIPTION_DISPLAY_TO_CONSOLE?: string;
   
   NODE_ENV?: string;
   LOG_LEVEL?: string;

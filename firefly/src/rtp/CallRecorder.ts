@@ -55,6 +55,13 @@ export class CallRecorder {
   private silenceValue!: number; // Initialized in start()
   private totalFramesWritten = 0;
   private recordingTimer?: NodeJS.Timeout;
+  
+  // Transcript management
+  private transcriptEntries: Array<{
+    speaker: 'caller' | 'ai';
+    text: string;
+    timestamp: Date;
+  }> = [];
 
   constructor(config: CallRecorderConfig) {
     this.config = config;
@@ -79,7 +86,7 @@ export class CallRecorder {
     }
 
     try {
-      this.logger.info('Starting call recording');
+      this.logger.debug('Starting call recording');
       
       // Create directory structure
       await this.createCallDirectory();
@@ -95,9 +102,7 @@ export class CallRecorder {
       // Start continuous timeline recording
       this.startContinuousRecording();
       
-      this.logger.info('Call recording started successfully', {
-        directory: this.callDirectory
-      });
+      this.logger.info('Call recording started');
       
     } catch (error) {
       this.logger.error('Failed to start call recording', error);
@@ -112,7 +117,7 @@ export class CallRecorder {
     }
 
     try {
-      this.logger.info('Stopping call recording');
+      this.logger.debug('Stopping call recording');
       
       // Stop continuous recording timer
       this.stopContinuousRecording();
@@ -120,13 +125,14 @@ export class CallRecorder {
       // Close audio streams and finalize WAV files
       await this.finalizeWAVFiles();
       
+      // Write transcript file
+      await this.writeTranscript();
+      
       // Write metadata file
       await this.writeMetadata();
       
       this.isRecording = false;
-      this.logger.info('Call recording stopped successfully', {
-        stats: this.stats
-      });
+      this.logger.info('Call recording stopped');
       
     } catch (error) {
       this.logger.error('Error stopping call recording', error);
@@ -169,6 +175,24 @@ export class CallRecorder {
     return { ...this.stats };
   }
 
+  public addCompletedTranscript(speaker: 'caller' | 'ai', text: string, timestamp: Date): void {
+    if (!this.isRecording) {
+      return;
+    }
+
+    try {
+      // Add transcript entry
+      this.transcriptEntries.push({
+        speaker,
+        text: text.trim(),
+        timestamp
+      });
+
+    } catch (error) {
+      this.logger.error('Error adding transcript entry', error);
+    }
+  }
+
   /**
    * Start continuous 20ms timeline recording
    */
@@ -187,9 +211,8 @@ export class CallRecorder {
     if (this.recordingTimer) {
       clearInterval(this.recordingTimer);
       this.recordingTimer = undefined;
+      this.logger.debug('Stopped continuous timeline recording');
     }
-    
-    this.logger.debug('Stopped continuous timeline recording');
   }
 
   /**
@@ -370,7 +393,7 @@ export class CallRecorder {
       const frameSize = 160; // mono frame size
       const totalDataSize = this.totalFramesWritten * frameSize * 2; // stereo
       
-      this.logger.info('Finalizing WAV file', {
+      this.logger.debug('Finalizing WAV file', {
         totalFramesWritten: this.totalFramesWritten,
         totalDataSize,
         durationSeconds: (this.totalFramesWritten * 20) / 1000
@@ -415,6 +438,48 @@ export class CallRecorder {
     });
   }
 
+  private async writeTranscript(): Promise<void> {
+    if (!this.callDirectory || this.transcriptEntries.length === 0) {
+      return;
+    }
+
+    try {
+      const transcriptFile = path.join(this.callDirectory, 'conversation.txt');
+      const lines: string[] = [];
+
+      // Header
+      lines.push(`Call Transcript - ${this.startTime.toISOString().split('T')[0]}`);
+      lines.push(`Call ID: ${this.config.callId}`);
+      lines.push(`Caller: ${this.config.caller.phoneNumber || 'Unknown'}`);
+      if (this.config.diversion) {
+        lines.push(`Diversion: ${this.config.diversion}`);
+      }
+      lines.push('');
+
+      // Transcript entries
+      for (const entry of this.transcriptEntries) {
+        const timeStr = entry.timestamp.toLocaleTimeString('en-GB', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+
+        const speaker = entry.speaker === 'caller' ? 'CALLER' : 'AI';
+        lines.push(`[${timeStr}] ${speaker}: ${entry.text}`);
+      }
+
+      await fs.promises.writeFile(transcriptFile, lines.join('\n') + '\n');
+
+      this.logger.debug('Wrote transcript file', { 
+        transcriptFile,
+        entriesCount: this.transcriptEntries.length
+      });
+    } catch (error) {
+      this.logger.error('Error writing transcript file', error);
+    }
+  }
+
   private async writeMetadata(): Promise<void> {
     if (!this.callDirectory) {
       return;
@@ -452,6 +517,9 @@ export class CallRecorder {
       // Clear audio buffers
       this.callerAudioBuffer = [];
       this.aiAudioBuffer = [];
+      
+      // Clear transcript entries
+      this.transcriptEntries = [];
       
       if (this.stereoStream && !this.stereoStream.destroyed) {
         this.stereoStream.destroy();

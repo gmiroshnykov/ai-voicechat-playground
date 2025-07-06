@@ -41,7 +41,7 @@ async function startApplication(): Promise<void> {
 
   // Handle registration events
   sipRegistrar.on('registered', () => {
-    logger.info('Successfully registered with SIP server');
+    // Registration success is already logged by SipRegistrar
   });
 
   sipRegistrar.on('registration-failed', (error) => {
@@ -64,7 +64,7 @@ async function startApplication(): Promise<void> {
 
 async function connectToDrachtio(): Promise<void> {
   return new Promise((resolve, reject) => {
-    logger.info('Connecting to drachtio server', {
+    logger.debug('Connecting to drachtio server', {
       host: config.drachtio.host,
       port: config.drachtio.port
     });

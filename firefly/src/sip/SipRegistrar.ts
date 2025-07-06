@@ -34,12 +34,12 @@ export class SipRegistrar extends EventEmitter {
   }
 
   public async start(): Promise<void> {
-    this.logger.info('Starting SIP registration');
+    this.logger.debug('Starting SIP registration');
     await this.register();
   }
 
   public stop(): void {
-    this.logger.info('Stopping SIP registration');
+    this.logger.debug('Stopping SIP registration');
     
     if (this.registrationTimer) {
       clearTimeout(this.registrationTimer);
@@ -57,7 +57,7 @@ export class SipRegistrar extends EventEmitter {
     const uri = `sip:${this.sipConfig.username}@${this.sipConfig.domain}:${this.sipConfig.port}`;
     const contact = `sip:${this.sipConfig.username}@${process.env.LOCAL_IP}:${this.drachtioConfig.sipPort}`;
 
-    this.logger.info('Sending REGISTER request', { uri, contact });
+    this.logger.debug('Sending REGISTER request', { uri, contact });
 
     const options: RegistrationOptions = {
       uri,
@@ -108,9 +108,7 @@ export class SipRegistrar extends EventEmitter {
       const reregisterIn = (3600 - 300) * 1000; // 55 minutes
       this.registrationState.nextRegistrationTime = new Date(Date.now() + reregisterIn);
       
-      this.logger.info('Successfully registered with SIP server', {
-        nextRegistration: this.registrationState.nextRegistrationTime
-      });
+      this.logger.info('Successfully registered with SIP server');
       
       this.emit('registered');
       

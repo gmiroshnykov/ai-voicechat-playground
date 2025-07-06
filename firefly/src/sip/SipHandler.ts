@@ -65,7 +65,7 @@ export class SipHandler {
       const remoteAddr = offer.connection?.ip || offer.origin.address;
       const remotePort = audioMedia.port;
 
-      callLogger.info('Negotiated codec', {
+      callLogger.debug('Negotiated codec', {
         codec: codecInfo.name,
         payload: codecInfo.payload,
         rate: codecInfo.clockRate,
@@ -81,13 +81,12 @@ export class SipHandler {
         sessionType,
         openaiConfig: this.config.openai,
         recordingConfig: this.config.recording,
+        transcriptionConfig: this.config.transcription,
         caller: {
           phoneNumber: this.extractPhoneNumber(callContext.from),
           diversionHeader: callContext.diversion
         },
         onHangUpRequested: async () => {
-          callLogger.info('AI assistant requested to hang up call');
-          
           // First, flush any remaining packets from jitter buffer to ensure all caller audio is captured
           try {
             callLogger.debug('Flushing jitter buffer before hangup');
@@ -305,7 +304,7 @@ export class SipHandler {
   }
 
   public async shutdown(): Promise<void> {
-    this.logger.info('Shutting down SIP handler');
+    this.logger.debug('Shutting down SIP handler');
     
     // Terminate all active dialogs
     for (const [dialogId, dialog] of this.activeDialogs) {

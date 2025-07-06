@@ -152,7 +152,7 @@ export class RtcpHandler {
         logData.dynamicFrameSize = `${dynamicFrameSize} samples`;
       }
       
-      this.logger.info('Sent RTCP Sender Report', logData);
+      this.logger.debug('Sent RTCP Sender Report', logData);
     } catch (error) {
       this.logger.error('Failed to send RTCP Sender Report', error);
     }

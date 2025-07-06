@@ -56,7 +56,7 @@ export class JitterBuffer {
     this.logger = createLogger({ component: 'JitterBuffer' });
     this.bufferTimeoutMs = config.bufferTimeMs;
     
-    this.logger.info('JitterBuffer initialized', {
+    this.logger.debug('JitterBuffer initialized', {
       bufferTimeMs: config.bufferTimeMs,
       codec: config.codecInfo.name
     });
@@ -303,7 +303,7 @@ export class JitterBuffer {
       maxDepth: 0
     };
     
-    this.logger.info('JitterBuffer reset');
+    this.logger.debug('JitterBuffer reset');
   }
 
   public flush(): void {
@@ -312,7 +312,7 @@ export class JitterBuffer {
       return;
     }
 
-    this.logger.info('Flushing jitter buffer', { 
+    this.logger.debug('Flushing jitter buffer', { 
       remainingPackets: this.packetBuffer.size 
     });
 
@@ -343,13 +343,13 @@ export class JitterBuffer {
     this.packetBuffer.clear();
     this.stats.currentDepth = 0;
 
-    this.logger.info('Jitter buffer flushed', { 
+    this.logger.debug('Jitter buffer flushed', { 
       flushedPackets: allPackets.length 
     });
   }
 
   public destroy(): void {
     this.reset();
-    this.logger.info('JitterBuffer destroyed');
+    this.logger.debug('JitterBuffer destroyed');
   }
 }

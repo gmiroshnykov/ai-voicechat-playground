@@ -2,7 +2,7 @@ import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
 import { RtpBridgeSession, RtpBridgeSessionConfig } from './RtpBridgeSession';
 import { RtpSessionConfig, CodecInfo } from './types';
-import { RtpConfig, OpenAIConfig, RecordingConfig } from '../config/types';
+import { RtpConfig, OpenAIConfig, RecordingConfig, TranscriptionConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RtpPortAllocationError, RtpSessionError } from '../utils/errors';
 
@@ -15,6 +15,7 @@ export interface CreateSessionOptions {
   // OpenAI bridge specific options
   openaiConfig?: OpenAIConfig;
   recordingConfig?: RecordingConfig;
+  transcriptionConfig?: TranscriptionConfig;
   caller?: {
     phoneNumber?: string;
     diversionHeader?: string;
@@ -38,7 +39,7 @@ export class RtpManager {
   }
 
   public async createSession(options: CreateSessionOptions): Promise<RtpSession> {
-    this.logger.info('Creating RTP session', {
+    this.logger.debug('Creating RTP session', {
       sessionId: options.sessionId,
       remoteEndpoint: `${options.remoteAddress}:${options.remotePort}`,
       codec: options.codec.name,
@@ -82,6 +83,7 @@ export class RtpManager {
             openaiApiKey: options.openaiConfig.apiKey,
             jitterBufferMs: this.rtpConfig.jitterBufferMs,
             recordingConfig: options.recordingConfig,
+            transcriptionConfig: options.transcriptionConfig,
             caller: options.caller,
             onHangUpRequested: options.onHangUpRequested
           };
@@ -100,7 +102,7 @@ export class RtpManager {
       // Track the session
       this.sessions.set(options.sessionId, session);
 
-      this.logger.info('RTP session created successfully', {
+      this.logger.debug('RTP session created successfully', {
         sessionId: options.sessionId,
         localPort
       });
@@ -120,7 +122,7 @@ export class RtpManager {
       return;
     }
 
-    this.logger.info('Destroying RTP session', { sessionId });
+    this.logger.debug('Destroying RTP session', { sessionId });
 
     try {
       // Stop the session
@@ -133,7 +135,7 @@ export class RtpManager {
       // Remove from tracking
       this.sessions.delete(sessionId);
 
-      this.logger.info('RTP session destroyed', { 
+      this.logger.debug('RTP session destroyed', { 
         sessionId,
         stats: session.getStats()
       });
@@ -162,7 +164,7 @@ export class RtpManager {
   }
 
   public async shutdown(): Promise<void> {
-    this.logger.info('Shutting down RTP manager', { 
+    this.logger.debug('Shutting down RTP manager', { 
       activeSessions: this.sessions.size 
     });
 
@@ -184,7 +186,7 @@ export class RtpManager {
     this.sessions.clear();
     this.usedPorts.clear();
     
-    this.logger.info('RTP manager shutdown complete');
+    this.logger.debug('RTP manager shutdown complete');
   }
 
   private allocatePort(): number {

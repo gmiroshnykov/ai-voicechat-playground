@@ -112,10 +112,17 @@ export function loadConfig(): AppConfig {
       apiKey: openaiApiKey
     };
 
-    // Recording config
+    // Recording config (enabled by default)
     const recordingConfig = {
-      enabled: validateBooleanEnv(getOptionalEnv('CALL_RECORDING_ENABLED', 'false')),
+      enabled: validateBooleanEnv(getOptionalEnv('CALL_RECORDING_ENABLED', 'true')),
       recordingsPath: getOptionalEnv('CALL_RECORDINGS_PATH', './recordings')
+    };
+
+    // Transcription config (enabled by default)
+    const transcriptionConfig = {
+      enabled: validateBooleanEnv(getOptionalEnv('TRANSCRIPTION_ENABLED', 'true')),
+      model: getOptionalEnv('TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'),
+      displayToConsole: validateBooleanEnv(getOptionalEnv('TRANSCRIPTION_DISPLAY_TO_CONSOLE', 'true'))
     };
 
     const config: AppConfig = {
@@ -124,6 +131,7 @@ export function loadConfig(): AppConfig {
       rtp: rtpConfig,
       openai: openaiConfig,
       recording: recordingConfig,
+      transcription: transcriptionConfig,
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

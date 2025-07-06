@@ -61,7 +61,7 @@ export abstract class RtpSession extends EventEmitter {
     }
 
     try {
-      this.logger.info('Starting RTP session', {
+      this.logger.debug('Starting RTP session', {
         localPort: this.config.localPort,
         remoteEndpoint: `${this.config.remoteAddress}:${this.config.remotePort}`
       });
@@ -72,7 +72,7 @@ export abstract class RtpSession extends EventEmitter {
       this.state = RtpSessionState.ACTIVE;
       this.emit('started');
       
-      this.logger.info('RTP session started successfully');
+      this.logger.debug('RTP session started successfully');
     } catch (error) {
       this.state = RtpSessionState.STOPPED;
       throw new RtpSessionError('Failed to start RTP session', { error });
@@ -84,7 +84,7 @@ export abstract class RtpSession extends EventEmitter {
       return;
     }
 
-    this.logger.info('Stopping RTP session');
+    this.logger.debug('Stopping RTP session');
     this.state = RtpSessionState.STOPPING;
 
     try {
@@ -94,7 +94,7 @@ export abstract class RtpSession extends EventEmitter {
       this.state = RtpSessionState.STOPPED;
       this.emit('stopped');
       
-      this.logger.info('RTP session stopped', { stats: this.stats });
+      this.logger.debug('RTP session stopped', { stats: this.stats });
     } catch (error) {
       this.logger.error('Error stopping RTP session', error);
       this.state = RtpSessionState.STOPPED;
