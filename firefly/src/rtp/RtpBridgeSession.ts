@@ -428,9 +428,30 @@ export class RtpBridgeSession extends RtpSession {
     // Parse and process RTP packet
     try {
       const rtpView = rtpJsUtils.nodeBufferToDataView(msg);
+      
+      // Check if it's a valid RTP packet - be more permissive for interoperability
       if (!rtpJsPackets.isRtp(rtpView)) {
-        this.logger.warn('Received non-RTP packet on RTP port');
-        return;
+        // Log details for debugging but continue if packet looks like RTP
+        const firstByte = msg.length > 0 ? msg[0]! : 0;
+        const rtpVersion = (firstByte >> 6) & 0x3;
+        
+        this.logger.debug('RTP validation failed, checking manually', {
+          packetLength: msg.length,
+          firstByte: firstByte?.toString(16) || '0',
+          rtpVersion,
+          expectedVersion: 2
+        });
+        
+        // Accept packets that at least have RTP version 2 and reasonable length
+        if (msg.length < 12 || rtpVersion !== 2) {
+          this.logger.warn('Received non-RTP packet on RTP port', {
+            packetLength: msg.length,
+            rtpVersion
+          });
+          return;
+        }
+        
+        this.logger.debug('Accepting packet despite RTP.js validation failure');
       }
 
       // Parse incoming packet

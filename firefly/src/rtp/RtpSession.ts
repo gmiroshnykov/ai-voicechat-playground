@@ -141,21 +141,23 @@ export abstract class RtpSession extends EventEmitter {
   }
 
   protected validateRtpSource(sourceAddr: string): boolean {
-    // Allow first packet or same /24 subnet
+    // Always allow first packet to enable RTP latching
     if (!this.latchingState.rtpLatched) {
       return true;
     }
 
-    const expectedOctets = this.latchingState.expectedRemoteAddress.split('.');
-    const sourceOctets = sourceAddr.split('.');
-
-    if (expectedOctets.length === 4 && sourceOctets.length === 4) {
-      const expectedSubnet = expectedOctets.slice(0, 3).join('.');
-      const sourceSubnet = sourceOctets.slice(0, 3).join('.');
-      return expectedSubnet === sourceSubnet;
+    // After latching, allow packets from any private/public address
+    // This is necessary for NAT traversal scenarios where the actual
+    // source address differs from what was advertised in SDP
+    
+    // Block only obviously invalid addresses
+    if (sourceAddr === '0.0.0.0' || sourceAddr === '255.255.255.255') {
+      return false;
     }
 
-    return false;
+    // For production use, you might want additional validation here
+    // but for now, be permissive to handle NAT scenarios
+    return true;
   }
 
   protected updateRtpStats(packetSize: number, direction: 'sent' | 'received'): void {

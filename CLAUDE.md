@@ -1,3 +1,4 @@
 - Use context7 when looking up API docs
 - Never use whisper-1 model
 - The 'web' and 'server-go' components of this project will only ever run on localhost.
+- We're using `direnv` for managing environment variables, so "public" things go into .envrc and "secret"/"private" things go into .envrc.local

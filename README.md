@@ -4,11 +4,12 @@ An experimental VoIP system that bridges telephone calls to OpenAI's Realtime AP
 
 ## Features (Current Implementation)
 
+- **Direct SIP Registration:** Built-in SIP registrar accepting client registrations (Linphone, softphones)
 - **PSTN-to-AI Bridge:** Direct telephone calls to OpenAI Realtime API (experimental)
 - **Advanced VoIP Handling:** SIP/RTP with NAT traversal, jitter buffer, packet loss recovery
 - **Call Recording:** Stereo audio recording with metadata storage
 - **Call Context Preservation:** Caller ID and call metadata extraction (via Diversion headers)
-- **Kyivstar Compatibility:** Designed for symmetric RTP and carrier-specific requirements
+- **Multi-Provider Support:** Direct SIP mode, Kyivstar, or external VoIP providers
 - **Research-Grade Implementation:** Sophisticated packet handling and audio processing
 
 *Note: Multi-tenant routing and production reliability features are designed but require further testing with real carrier deployments.*
@@ -18,8 +19,9 @@ An experimental VoIP system that bridges telephone calls to OpenAI's Realtime AP
 ### Prerequisites
 
 - Node.js 18+
+- Docker and Docker Compose
 - OpenAI API Key (for AI chat features)
-- SIP credentials or FreeSWITCH for testing
+- SIP client (Linphone, softphone) for testing direct mode
 
 ### Basic Setup
 
@@ -30,87 +32,102 @@ cd ai-voicechat-playground
 # Use devbox for consistent environment (recommended)
 devbox shell
 
-# Set up Firefly service
-cd firefly
-npm install
-npm run build
+# Set up environment variables
+cp firefly/.env.example firefly/.env
+# Edit firefly/.env and add your OPENAI_API_KEY
 
-# Start FreeSWITCH for local testing
-cd ../freeswitch
-./run.sh
+# Start the complete stack (Drachtio + Firefly)
+docker-compose up --build
 ```
 
 ## Components
 
 ### Firefly VoIP Service ([firefly/](firefly/))
-The main experimental VoIP service - TypeScript-based SIP/RTP bridge to OpenAI Realtime API:
-- G.711 PCMA/PCMU direct passthrough (no transcoding)
-- Jitter buffer with packet loss recovery
-- Stereo call recording with metadata
-- Ukrainian/English AI assistant (experimental)
-- NAT traversal and RTCP support
+The main experimental VoIP service - TypeScript-based SIP server with built-in registrar:
+- **Direct SIP Registration:** Accepts registrations from SIP clients (no external PBX needed)
+- **Multi-Provider Support:** Direct mode, Kyivstar VoIP, or external SIP providers
+- **OpenAI Integration:** Real-time AI conversation bridging
+- **Advanced Audio:** G.711 PCMA/PCMU, OPUS support with jitter buffer
+- **Call Recording:** Stereo audio recording with metadata
+- **NAT Traversal:** RTP latching and RTCP support
 
-### FreeSWITCH PBX ([freeswitch/](freeswitch/))
-Local testing infrastructure - VoIP PBX for development and testing:
-- Pre-configured dialplan for Firefly integration
-- SIP user registration for local testing
-- Audio codec support
-- Call routing and management
+### Drachtio SIP Server
+High-performance SIP server handling protocol operations:
+- SIP message parsing and routing
+- Authentication and registration management  
+- Media negotiation and RTP handling
+- Managed via Docker Compose
 
 ### Audio Test Files ([audio/](audio/))
 Sample audio files for testing and development.
 
 ## Architecture
 
+**Direct SIP Mode (Default):**
 ```
-PSTN/Mobile Phone → VoIP Provider/FreeSWITCH → Firefly (TypeScript) → OpenAI Realtime API
-                                                       ↓
-                                            Call Recording & Metadata
+SIP Client (Linphone/Softphone) → Firefly SIP Registrar → OpenAI Realtime API
+                                           ↓
+                                Call Recording & Metadata
+```
+
+**External Provider Mode:**
+```
+PSTN/Mobile Phone → VoIP Provider (Kyivstar) → Firefly (TypeScript) → OpenAI Realtime API
+                                                        ↓
+                                             Call Recording & Metadata
 ```
 
 ### Directory Structure
 ```
 firefly-voip-platform/
-├── firefly/              # Main VoIP service (TypeScript)
-├── freeswitch/           # Local PBX for testing
+├── firefly/              # Main VoIP service with SIP registrar
 ├── audio/                # Test audio files
 ├── recordings/           # Call recordings (generated)
-└── docker-compose.yml    # Drachtio server
+└── docker-compose.yml    # Drachtio + Firefly services
 ```
 
 ## Usage Patterns
 
-**Target Use Case (Designed For):**
+**Direct SIP Mode (Default):**
+- Configure any SIP client (Linphone, softphone) to register with Firefly
+- Make calls directly to AI assistant without external infrastructure
+- Built-in authentication (username: `linphone`, password: `test123`)
+- Perfect for development, testing, and standalone deployments
+
+**External Provider Mode:**
 - Bridge PSTN calls via Kyivstar VoIP service to OpenAI Realtime API
 - Multi-tenant routing based on forwarding subscriber (Diversion headers)
 - Production telephony handling with concurrent calls and reliability
 - ⚠️ **Current Status**: Designed but only tested in development environments
 
-**Current Experimental Testing:**
-- Use `firefly/` with `--mode chat` to bridge phone calls to OpenAI Realtime API
-- Tested with personal laptop setup and VoIP provider credentials
-- G.711 PCMA direct passthrough for minimal latency
+**Testing Modes:**
+- `--mode chat`: Bridge calls to OpenAI Realtime API for AI conversations
+- `--mode echo`: Audio echo testing for debugging RTP/codec issues
+- G.711 PCMA/PCMU direct passthrough for minimal latency
 - AI agent starts in Ukrainian, switches to English when prompted
-
-**Local Development and Testing:**
-- Use `freeswitch/` PBX for local SIP testing without carrier costs
-- Use `firefly/` with `--mode echo` for audio echo testing
-- Test with any SIP client (softphone apps)
-- Mock call forwarding scenarios and various call flows
 
 ## Documentation
 
-- **[Firefly Guide](firefly/README.md)** - Main experimental VoIP service with OpenAI integration
-- **[FreeSWITCH Guide](freeswitch/README.md)** - Local PBX setup for testing and development
+- **[Firefly Guide](firefly/README.md)** - Main VoIP service with SIP registrar and OpenAI integration
 - **[Audio Files Guide](audio/README.md)** - Test audio specifications
 - **[DESIGN.md](DESIGN.md)** - System architecture and design decisions
 
 ## Development
 
-Use [Devbox](https://www.jetify.com/devbox) for consistent development environment:
-
+**Docker Development (Recommended):**
 ```bash
 devbox shell
+docker-compose up --build  # Starts Drachtio + Firefly
+```
+
+**Local Development:**
+```bash
+devbox shell
+
+# Start Drachtio server
+docker-compose up drachtio
+
+# In separate terminal, run Firefly locally
 cd firefly
 npm install
 npm run build
@@ -119,12 +136,14 @@ npm start -- --mode chat  # or --mode echo for testing
 
 ## Current Status
 
-This project implements the core architecture designed for production Kyivstar VoIP integration with multi-tenant support, but remains experimental. Current validation is limited to:
+This project implements a complete SIP-to-AI bridge with both direct registration and external provider support, but remains experimental. Current validation includes:
 
+- ✅ **Direct SIP registration** accepting connections from standard SIP clients
 - ✅ **Basic PSTN-to-AI bridging** with personal VoIP provider testing
 - ✅ **Sophisticated packet handling** including jitter buffer and loss recovery
 - ✅ **Call recording and metadata extraction** 
-- ✅ **Diversion header parsing** for call context preservation
+- ✅ **Multi-provider architecture** supporting direct, Kyivstar, and external modes
+- ✅ **Docker deployment** with service orchestration
 - ⚠️ **Not yet validated**: Multi-tenant routing in production carrier environments
 - ⚠️ **Not yet validated**: Concurrent call handling under real load
 - ⚠️ **Not yet validated**: Production reliability and error recovery with real users

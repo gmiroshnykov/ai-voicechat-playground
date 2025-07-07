@@ -1,0 +1,12 @@
+# Node.js
+node_modules
+
+# Distribution directory (will be rebuilt in container)
+dist
+
+# Recordings (will be mounted as volume)
+recordings
+
+# Git
+.git
+.gitignore

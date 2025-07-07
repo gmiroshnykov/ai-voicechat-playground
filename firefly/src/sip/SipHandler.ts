@@ -38,6 +38,7 @@ export class SipHandler {
     try {
       // Parse offered SDP
       const offer = sdpTransform.parse(req.body) as ParsedSdp;
+      
       const audioMedia = offer.media.find(m => m.type === 'audio');
 
       if (!audioMedia) {
@@ -46,31 +47,34 @@ export class SipHandler {
         return;
       }
 
+      // Log offered codecs
+      const offeredCodecs = audioMedia.rtp?.map(rtp => `${rtp.codec}/${rtp.rate}`) || [];
+      callLogger.info('Codecs offered', { codecs: offeredCodecs });
+
       // Determine session type based on CLI mode and OpenAI configuration
       const sessionType = this.mode === 'chat' && this.config.openai.enabled ? 'bridge' : 'echo';
 
       // Extract codec information based on session type
-      const codecInfo = this.extractCodecInfo(audioMedia, sessionType);
+      const codecInfo = this.extractCodecInfo(audioMedia, sessionType, callLogger);
       if (!codecInfo) {
         const supportedCodecs = sessionType === 'bridge' ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
         callLogger.error('No supported codec in offer', { 
           sessionType, 
-          supportedCodecs 
+          supportedCodecs,
+          offered: offeredCodecs
         });
         res.send(488, 'Not Acceptable Here');
         return;
       }
 
+      callLogger.info('Codec negotiated', {
+        codec: `${codecInfo.name}/${codecInfo.clockRate}`,
+        sessionType
+      });
+
       // Get remote RTP details
       const remoteAddr = offer.connection?.ip || offer.origin.address;
       const remotePort = audioMedia.port;
-
-      callLogger.debug('Negotiated codec', {
-        codec: codecInfo.name,
-        payload: codecInfo.payload,
-        rate: codecInfo.clockRate,
-        sessionType
-      });
       
       // Create RTP session
       const rtpSession = await this.rtpManager.createSession({
@@ -186,14 +190,43 @@ export class SipHandler {
     return match?.[1] ?? 'unknown';
   }
 
-  private extractCodecInfo(audioMedia: any, sessionType: 'echo' | 'bridge'): ExtractedCodecInfo | null {
+  private extractCodecInfo(audioMedia: any, sessionType: 'echo' | 'bridge', logger: Logger): ExtractedCodecInfo | null {
     // Different codec support based on session type
     const supportedCodecs = sessionType === 'bridge' 
       ? ['pcma', 'pcmu']  // OpenAI only supports G.711 A-law and μ-law
       : ['opus', 'pcmu', 'pcma', 'g722'];  // Echo mode supports all codecs
     
+    // Standard payload type mappings (RFC 3551)
+    const standardPayloads: { [key: number]: { codec: string, rate: number } } = {
+      0: { codec: 'pcmu', rate: 8000 },     // G.711 μ-law
+      8: { codec: 'pcma', rate: 8000 },     // G.711 A-law  
+      18: { codec: 'g729', rate: 8000 },    // G.729
+      9: { codec: 'g722', rate: 8000 }      // G.722
+    };
+    
+    // Check standard payload types first
+    const allPayloads = audioMedia.payloads?.split(' ').map((p: string) => parseInt(p, 10)) || [];
+    for (const payload of allPayloads) {
+      if (standardPayloads[payload]) {
+        const { codec, rate } = standardPayloads[payload];
+        
+        if (supportedCodecs.includes(codec)) {
+          const codecInfo: ExtractedCodecInfo = {
+            name: codec.toUpperCase(),
+            payload: payload,
+            clockRate: rate,
+            sdpPayload: payload
+          } as ExtractedCodecInfo;
+
+          return codecInfo;
+        }
+      }
+    }
+    
+    // Check dynamic payload types from RTP map
     for (const rtpInfo of audioMedia.rtp) {
       const codecName = rtpInfo.codec.toLowerCase();
+      
       if (supportedCodecs.includes(codecName)) {
         const codecInfo: ExtractedCodecInfo = {
           name: codecName.toUpperCase(),

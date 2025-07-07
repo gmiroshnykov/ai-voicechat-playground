@@ -22,8 +22,8 @@ function getOptionalEnv(key: keyof EnvironmentVariables, defaultValue: string): 
 }
 
 function validateSipProvider(provider: string): SipProvider {
-  if (provider !== 'freeswitch' && provider !== 'kyivstar') {
-    throw new ConfigurationError(`Invalid SIP_PROVIDER: ${provider}. Must be 'freeswitch' or 'kyivstar'`);
+  if (provider !== 'freeswitch' && provider !== 'kyivstar' && provider !== 'direct') {
+    throw new ConfigurationError(`Invalid SIP_PROVIDER: ${provider}. Must be 'freeswitch', 'kyivstar', or 'direct'`);
   }
   return provider;
 }

@@ -1,4 +1,5 @@
 services:
+
   drachtio:
     image: drachtio/drachtio-server:0.9.3
     container_name: drachtio
@@ -14,3 +15,64 @@ services:
       --homer-id 10
     environment:
       - DRACHTIO_SECRET=cymru
+    networks:
+      - firefly-network
+
+  firefly:
+    build:
+      context: ./firefly
+      dockerfile: Dockerfile
+    container_name: firefly
+    restart: unless-stopped
+    depends_on:
+      - drachtio
+    command: ["node", "dist/index.js", "--mode", "chat"]
+    ports:
+      # RTP port range for direct SIP calls
+      - "10000-10100:10000-10100/udp"
+    volumes:
+      # Persist call recordings
+      - ./firefly/recordings:/app/recordings:rw
+    environment:
+      # Drachtio connection (bridge networking)
+      - DRACHTIO_HOST=drachtio
+      - DRACHTIO_PORT=9022
+      - DRACHTIO_SECRET=cymru
+      - DRACHTIO_SIP_PORT=5062
+
+      # Network configuration
+      - LOCAL_IP=${LOCAL_IP}
+
+      # SIP configuration (direct mode - no external SIP provider)
+      - SIP_PROVIDER=${SIP_PROVIDER:-direct}
+      - SIP_DOMAIN=${SIP_DOMAIN:-localhost}
+      - SIP_USERNAME=${SIP_USERNAME:-firefly}
+      - SIP_PASSWORD=${SIP_PASSWORD:-${FIREFLY_PASSWORD:-password}}
+      - SIP_PORT=${SIP_PORT:-5062}
+
+      # RTP configuration
+      - RTP_PORT_MIN=${RTP_PORT_MIN:-10000}
+      - RTP_PORT_MAX=${RTP_PORT_MAX:-10100}
+      - JITTER_BUFFER_MS=${JITTER_BUFFER_MS:-40}
+
+      # OpenAI configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Recording configuration
+      - CALL_RECORDING_ENABLED=${CALL_RECORDING_ENABLED:-true}
+      - CALL_RECORDINGS_PATH=/app/recordings
+
+      # Transcription configuration
+      - TRANSCRIPTION_ENABLED=${TRANSCRIPTION_ENABLED:-true}
+      - TRANSCRIPTION_MODEL=${TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
+      - TRANSCRIPTION_DISPLAY_TO_CONSOLE=${TRANSCRIPTION_DISPLAY_TO_CONSOLE:-true}
+
+      # Application configuration
+      - NODE_ENV=${NODE_ENV:-development}
+      - LOG_LEVEL=debug
+    networks:
+      - firefly-network
+
+networks:
+  firefly-network:
+    driver: bridge

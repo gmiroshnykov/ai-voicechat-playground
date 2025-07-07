@@ -1,7 +1,0 @@
-<include>
-  <extension name="firefly">
-    <condition field="destination_number" expression="^firefly$">
-      <action application="bridge" data="user/firefly"/>
-    </condition>
-  </extension>
-</include>

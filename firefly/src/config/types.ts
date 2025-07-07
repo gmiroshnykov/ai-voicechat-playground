@@ -1,4 +1,4 @@
-export type SipProvider = "freeswitch" | "kyivstar";
+export type SipProvider = "freeswitch" | "kyivstar" | "direct";
 
 export interface SipConfig {
   provider: SipProvider;

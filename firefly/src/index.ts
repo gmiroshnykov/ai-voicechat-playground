@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { config } from './config';
 import { RtpManager } from './rtp/RtpManager';
 import { SipRegistrar } from './sip/SipRegistrar';
+import { SipInboundRegistrar } from './sip/SipInboundRegistrar';
 import { SipHandler } from './sip/SipHandler';
 import { logger } from './utils/logger';
 
@@ -22,6 +23,7 @@ const mode = options.mode === 'chat' ? 'chat' : 'echo';
 const srf = new Srf();
 const rtpManager = new RtpManager(config.rtp);
 let sipRegistrar: SipRegistrar | undefined;
+let sipInboundRegistrar: SipInboundRegistrar | undefined;
 let sipHandler: SipHandler | undefined;
 
 async function startApplication(): Promise<void> {
@@ -36,29 +38,47 @@ async function startApplication(): Promise<void> {
   await connectToDrachtio();
 
   // Initialize SIP components
-  sipRegistrar = new SipRegistrar(srf, config.sip, config.drachtio);
+  sipInboundRegistrar = new SipInboundRegistrar(srf as any);
   sipHandler = new SipHandler(srf, rtpManager, config, mode);
 
-  // Handle registration events
-  sipRegistrar.on('registered', () => {
-    // Registration success is already logged by SipRegistrar
+  // Handle inbound registration events
+  sipInboundRegistrar.on('user-registered', (username: string, contactUri: string) => {
+    logger.info('SIP client registered', { username, contactUri });
   });
 
-  sipRegistrar.on('registration-failed', (error) => {
-    logger.warn('Registration failed, will retry', { error });
+  sipInboundRegistrar.on('user-unregistered', (username: string) => {
+    logger.info('SIP client unregistered', { username });
   });
 
-  sipRegistrar.on('registration-fatal', (error) => {
-    logger.error('Fatal registration error, exiting', error);
-    shutdown(1);
-  });
+  // Start inbound registrar (accepts registrations from SIP clients)
+  await sipInboundRegistrar.start();
 
-  // Start SIP registration
-  await sipRegistrar.start();
+  // Only start outbound SIP registration if not in direct mode
+  if (config.sip.provider !== 'direct') {
+    sipRegistrar = new SipRegistrar(srf, config.sip, config.drachtio);
+    
+    // Handle registration events
+    sipRegistrar.on('registered', () => {
+      // Registration success is already logged by SipRegistrar
+    });
+
+    sipRegistrar.on('registration-failed', (error) => {
+      logger.warn('Registration failed, will retry', { error });
+    });
+
+    sipRegistrar.on('registration-fatal', (error) => {
+      logger.error('Fatal registration error, exiting', error);
+      shutdown(1);
+    });
+
+    // Start SIP registration
+    await sipRegistrar.start();
+  }
 
   logger.info('Firefly started successfully', {
-    sipEndpoint: `${config.sip.username}@${config.sip.domain}`,
-    rtpPorts: `${config.rtp.portMin}-${config.rtp.portMax}`
+    sipEndpoint: config.sip.provider === 'direct' ? 'direct-sip-server' : `${config.sip.username}@${config.sip.domain}`,
+    rtpPorts: `${config.rtp.portMin}-${config.rtp.portMax}`,
+    mode: config.sip.provider === 'direct' ? 'accepting-registrations' : 'outbound-registration'
   });
 }
 
@@ -96,9 +116,13 @@ async function shutdown(exitCode: number = 0): Promise<void> {
   logger.info('Shutting down Firefly...');
 
   try {
-    // Stop SIP registration
+    // Stop SIP registration services
     if (sipRegistrar) {
       sipRegistrar.stop();
+    }
+    
+    if (sipInboundRegistrar) {
+      sipInboundRegistrar.stop();
     }
 
     // Shutdown SIP handler
