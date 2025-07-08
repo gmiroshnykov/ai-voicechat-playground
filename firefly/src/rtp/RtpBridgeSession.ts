@@ -9,6 +9,8 @@ import { CallRecorder, CallRecorderConfig } from './CallRecorder';
 import { RtpSessionConfig, FrameSizeDetection, CodecType, RtpPacketInfo } from './types';
 import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, RecordingConfig, TranscriptionConfig } from '../config/types';
 import { TranscriptionManager, TranscriptEntry } from './TranscriptionManager';
+import { RtpContinuousScheduler, RtpContinuousSchedulerConfig } from './RtpContinuousScheduler';
+import { OpenAIAudioSourceManager, OpenAIAudioSourceManagerConfig } from './OpenAIAudioSourceManager';
 
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
@@ -43,10 +45,9 @@ export class RtpBridgeSession extends RtpSession {
   // Callback for hanging up the call
   private onHangUpRequested?: () => Promise<void>;
   
-  // Audio packet scheduling
-  private audioQueue: Buffer[] = [];
-  private packetTimer?: NodeJS.Timeout;
-  private isPlayingAudio = false;
+  // Continuous RTP streaming
+  private continuousScheduler?: RtpContinuousScheduler;
+  private openaiAudioSourceManager?: OpenAIAudioSourceManager;
   
   // Jitter buffer for packet reordering and loss handling
   private jitterBuffer?: JitterBuffer;
@@ -86,7 +87,7 @@ export class RtpBridgeSession extends RtpSession {
     }
     
     // Initialize jitter buffer
-    const jitterBufferMs = this.bridgeConfig.jitterBufferMs ?? 40; // Default 40ms
+    const jitterBufferMs = this.bridgeConfig.jitterBufferMs ?? 60; // Default 60ms (3 packets)
     this.jitterBuffer = new JitterBuffer({
       bufferTimeMs: jitterBufferMs,
       codecInfo: this.bridgeConfig.codec,
@@ -150,41 +151,33 @@ export class RtpBridgeSession extends RtpSession {
     });
     this.rtcpHandler.start();
 
-    // Send initial silence packets IMMEDIATELY to establish symmetric RTP
-    await this.sendInitialSilence();
-
-    // Start periodic keepalive packets while OpenAI connection is establishing
-    const keepaliveInterval = setInterval(() => {
-      if (!this.isConnectedToOpenAI && this.state === 'active') {
-        const silencePayload = this.codecHandler.createSilencePayload(this.config.codec);
-        this.sendRtpPacket(silencePayload);
-      }
-    }, 100); // Send every 100ms
-
-    try {
-      // Initialize OpenAI Realtime connection (this takes time)
-      await this.initializeOpenAIConnection();
-    } finally {
-      // Stop keepalive packets once OpenAI is connected or if connection fails
-      clearInterval(keepaliveInterval);
+    // Initialize call recording first if enabled (to get the call directory)
+    if (this.bridgeConfig.recordingConfig?.enabled) {
+      await this.callRecorder!.start();
     }
+
+    // Initialize OpenAI audio source manager
+    await this.initializeOpenAIAudioSourceManager();
     
-    // Start call recording if enabled
-    if (this.callRecorder) {
-      await this.callRecorder.start();
-    }
+    // Start continuous RTP streaming immediately
+    this.startContinuousRtpStream();
+
+    // Initialize OpenAI Realtime connection (this takes time)
+    await this.initializeOpenAIConnection();
   }
 
   protected async onStop(): Promise<void> {
-    // Stop audio playback timer
-    if (this.packetTimer) {
-      clearTimeout(this.packetTimer);
-      this.packetTimer = undefined;
+    // Stop continuous scheduler
+    if (this.continuousScheduler) {
+      this.continuousScheduler.stop();
+      this.continuousScheduler = undefined;
     }
     
-    // Clear audio queue
-    this.audioQueue = [];
-    this.isPlayingAudio = false;
+    // Clean up OpenAI audio source manager
+    if (this.openaiAudioSourceManager) {
+      this.openaiAudioSourceManager.endCall();
+      this.openaiAudioSourceManager = undefined;
+    }
     
     // Stop RTCP handler
     if (this.rtcpHandler) {
@@ -329,6 +322,7 @@ export class RtpBridgeSession extends RtpSession {
     // Use transport layer events for audio and transcripts
     this.realtimeSession.on('transport_event', (event: any) => {
       if (event.type === 'response.audio.delta') {
+        this.logger.debug('Received OpenAI audio delta event');
         this.handleOpenAIAudio(event);
       } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
         // Handle completed user (caller) transcript
@@ -342,11 +336,28 @@ export class RtpBridgeSession extends RtpSession {
           outputFormat: event.session?.output_audio_format
         });
       } else if (event.type === 'error') {
-        this.logger.error('OpenAI transport error', {
-          errorMessage: event.error?.message || 'Unknown error',
-          errorType: event.error?.type || 'unknown',
-          errorCode: event.error?.code || 'unknown',
-          fullError: event.error
+        const errorDetails = {
+          message: event.error?.message || 'Unknown error',
+          type: event.error?.type || 'unknown',
+          code: event.error?.code || 'unknown',
+          eventType: event.type,
+          fullError: event.error,
+          rawEvent: event
+        };
+        
+        // Check if this is a benign cancellation error during cleanup
+        if (event.error?.code === 'response_cancel_not_active') {
+          this.logger.debug('Ignoring response cancellation error during cleanup', errorDetails);
+          return;
+        }
+        
+        // Log with proper error serialization
+        this.logger.error('OpenAI transport error', event.error, errorDetails);
+        
+        // Also log the raw error as string for debugging
+        this.logger.debug('Raw OpenAI error details', {
+          errorString: String(event.error),
+          eventString: String(event)
         });
       } else {
         // Log all other events at trace level only
@@ -359,16 +370,105 @@ export class RtpBridgeSession extends RtpSession {
 
     // Handle errors
     this.realtimeSession.on('error', (error) => {
-      this.logger.error('OpenAI session error', {
-        errorMessage: (error as any)?.message || 'Unknown error',
-        errorStack: (error as any)?.stack,
-        errorName: (error as any)?.name,
-        errorType: typeof error,
-        fullError: String(error)
+      const errorDetails = {
+        message: (error as any)?.message || 'Unknown error',
+        stack: (error as any)?.stack,
+        name: (error as any)?.name,
+        type: typeof error,
+        fullError: error,
+        rawError: String(error)
+      };
+      
+      // Check if this is a benign cancellation error during cleanup
+      if ((error as any)?.error?.error?.code === 'response_cancel_not_active') {
+        this.logger.debug('Ignoring session cancellation error during cleanup', errorDetails);
+        return;
+      }
+      
+      this.logger.error('OpenAI session error', error, errorDetails);
+      
+      // Also log the raw error as string for debugging
+      this.logger.debug('Raw OpenAI session error details', {
+        errorString: String(error),
+        errorConstructor: error?.constructor?.name
       });
     });
 
     // Note: connection events will be handled via the session lifecycle
+  }
+
+  private async initializeOpenAIAudioSourceManager(): Promise<void> {
+    try {
+      const audioSourceConfig: OpenAIAudioSourceManagerConfig = {
+        codec: {
+          name: this.config.codec.name as CodecType,
+          payload: this.config.codec.payload,
+          clockRate: this.config.codec.clockRate,
+          channels: this.config.codec.channels
+        },
+        logger: this.logger,
+        sessionId: this.config.sessionId || 'bridge-session',
+        recordingsPath: this.bridgeConfig.recordingConfig?.recordingsPath,
+        callDirectory: this.callRecorder?.getCallDirectory()
+      };
+      
+      this.openaiAudioSourceManager = new OpenAIAudioSourceManager(audioSourceConfig);
+      await this.openaiAudioSourceManager.initialize();
+      
+    } catch (error) {
+      this.logger.error('Failed to initialize OpenAI audio source manager', error);
+      throw error;
+    }
+  }
+
+  private startContinuousRtpStream(): void {
+    if (!this.openaiAudioSourceManager) {
+      this.logger.error('OpenAI audio source manager not initialized');
+      return;
+    }
+    
+    this.logger.info('Starting continuous RTP stream for OpenAI bridge');
+    
+    // Create and configure continuous scheduler
+    const schedulerConfig: RtpContinuousSchedulerConfig = {
+      targetInterval: 20, // 20ms target interval
+      logFrequency: 100, // Log every 100 packets
+      logger: this.logger,
+      sessionId: this.config.sessionId || 'bridge-session',
+      onPacketSend: (packetNumber: number, callTimeMs: number) => {
+        // Get the next packet from OpenAI audio source manager
+        const result = this.openaiAudioSourceManager!.getNextPacket(callTimeMs);
+        
+        if (result) {
+          // Send the packet (either silence or OpenAI audio) with proper recording
+          this.sendAudioPacket(result.packet, result.isOpenAIAudio);
+          
+          // Log phase information every 100 packets
+          if (packetNumber % 100 === 0) {
+            const phase = this.openaiAudioSourceManager!.getCallPhase(callTimeMs);
+            this.logger.trace('Continuous RTP stream status', {
+              packetNumber,
+              callTimeMs,
+              phase: phase.phase,
+              queueLength: phase.queueLength,
+              isOpenAIAudio: result.isOpenAIAudio
+            });
+          }
+          
+          return true; // Continue sending
+        } else {
+          // Call should end
+          this.logger.info('OpenAI audio source manager signaled end of call');
+          return false; // Stop sending
+        }
+      },
+      onComplete: async () => {
+        this.logger.info('Continuous RTP stream completed - call ended by audio source manager');
+      }
+    };
+    
+    this.continuousScheduler = new RtpContinuousScheduler(schedulerConfig);
+    this.continuousScheduler.start();
   }
 
   private async disconnectFromOpenAI(): Promise<void> {
@@ -490,14 +590,24 @@ export class RtpBridgeSession extends RtpSession {
   }
 
   private handleOpenAIAudio(event: any): void {
+    this.logger.trace('handleOpenAIAudio called', {
+      hasEventDelta: !!event.delta,
+      deltaLength: event.delta ? event.delta.length : 0
+    });
+    
     try {
       // Handle response.audio.delta event from OpenAI
-      if (event.delta) {
+      if (event.delta && this.openaiAudioSourceManager) {
         // Decode base64 G.711 audio from OpenAI
         const audioBuffer = Buffer.from(event.delta, 'base64');
         
-        // Chunk into proper G.711 packet sizes (160 bytes = 20ms at 8kHz)
-        this.chunkAndSendAudio(audioBuffer);
+        this.logger.trace('Decoded OpenAI audio buffer', {
+          base64Length: event.delta.length,
+          bufferLength: audioBuffer.length
+        });
+        
+        // Add to continuous stream (will be chunked automatically)
+        this.openaiAudioSourceManager.addOpenAIAudio(audioBuffer);
       }
       
     } catch (error) {
@@ -566,7 +676,7 @@ export class RtpBridgeSession extends RtpSession {
               payloadSamples === timestampDiff && 
               !this.frameSizeDetection.frameSizeConfirmed) {
             
-            this.logger.debug('Dynamic frame size confirmed', {
+            this.logger.trace('Dynamic frame size confirmed', {
               samples: timestampDiff,
               payloadBytes: payloadLength,
               codec: this.config.codec.name
@@ -581,25 +691,10 @@ export class RtpBridgeSession extends RtpSession {
     this.frameSizeDetection.lastReceivedSeqNum = seqNum;
   }
 
-  private async sendInitialSilence(): Promise<void> {
-    const silencePayload = this.codecHandler.createSilencePayload(this.config.codec);
-    const totalPackets = 10; // Increased from 5 to 10
 
-    this.logger.debug('Sending initial silence packets', {
-      count: totalPackets,
-      codec: this.config.codec.name
-    });
-
-    // Send packets with 20ms intervals
-    for (let i = 0; i < totalPackets; i++) {
-      this.sendRtpPacket(silencePayload, i === 0); // Marker bit on first packet
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-  }
-
-  private sendRtpPacket(payload: Buffer, marker: boolean = false): void {
+  private sendAudioPacket(payload: Buffer, isOpenAIAudio: boolean = false, marker: boolean = false): void {
     // Add AI audio to continuous recording timeline when sending to caller
-    if (this.callRecorder && this.isPlayingAudio) {
+    if (this.callRecorder && isOpenAIAudio) {
       this.callRecorder.addAIAudio(payload);
     }
 
@@ -632,70 +727,7 @@ export class RtpBridgeSession extends RtpSession {
     this.updateRtpStats(rtpBuffer.length, 'sent');
   }
 
-  private chunkAndSendAudio(audioBuffer: Buffer): void {
-    // Note: AI audio recording moved to sendRtpPacket() to ensure proper timing sync
-    // with caller audio (both recorded when actually sent/received, not when buffered)
-    
-    const chunkSize = 160; // G.711 PCMA: 160 bytes = 20ms at 8kHz
-    let offset = 0;
-    const chunks: Buffer[] = [];
-    
-    while (offset < audioBuffer.length) {
-      const remainingBytes = audioBuffer.length - offset;
-      const currentChunkSize = Math.min(chunkSize, remainingBytes);
-      
-      // Extract chunk
-      const chunk = audioBuffer.subarray(offset, offset + currentChunkSize);
-      
-      // Pad with silence if chunk is smaller than expected (should rarely happen)
-      let paddedChunk = chunk;
-      if (chunk.length < chunkSize) {
-        paddedChunk = Buffer.alloc(chunkSize);
-        chunk.copy(paddedChunk);
-        // Fill remainder with codec-appropriate silence using CodecHandler
-        const silencePayload = this.codecHandler.createSilencePayload(this.bridgeConfig.codec, 20);
-        const silenceValue: number = silencePayload.length > 0 ? silencePayload[0]! : 0xFF; // Get the silence byte value for this codec
-        paddedChunk.fill(silenceValue, chunk.length);
-        
-      }
-      
-      chunks.push(paddedChunk);
-      offset += currentChunkSize;
-    }
-    
-    // Add chunks to queue
-    this.audioQueue.push(...chunks);
-    
-    // Start audio playback if not already playing
-    this.startAudioPlayback();
-  }
   
-  private startAudioPlayback(): void {
-    if (this.isPlayingAudio || this.audioQueue.length === 0) {
-      return;
-    }
-    
-    this.isPlayingAudio = true;
-    this.scheduleNextPacket();
-  }
-  
-  private scheduleNextPacket(): void {
-    if (this.audioQueue.length === 0) {
-      this.isPlayingAudio = false;
-      return;
-    }
-    
-    // Send next packet
-    const nextChunk = this.audioQueue.shift();
-    if (nextChunk) {
-      this.sendRtpPacket(nextChunk); // No need for AI audio flag anymore
-      
-      // Schedule next packet in 20ms
-      this.packetTimer = setTimeout(() => {
-        this.scheduleNextPacket();
-      }, 20);
-    }
-  }
 
   public getFrameSizeInfo(): FrameSizeDetection {
     return { ...this.frameSizeDetection };

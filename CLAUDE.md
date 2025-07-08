@@ -2,3 +2,4 @@
 - Never use whisper-1 model
 - The 'web' and 'server-go' components of this project will only ever run on localhost.
 - We're using `direnv` for managing environment variables, so "public" things go into .envrc and "secret"/"private" things go into .envrc.local
+- Never try to turn Node.js into a hard-real-time system. Accept that setTimeout() et al will drift and work around it with algorithms, not trying to make timers more precise.

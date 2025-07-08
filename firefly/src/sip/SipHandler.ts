@@ -51,13 +51,20 @@ export class SipHandler {
       const offeredCodecs = audioMedia.rtp?.map(rtp => `${rtp.codec}/${rtp.rate}`) || [];
       callLogger.info('Codecs offered', { codecs: offeredCodecs });
 
-      // Determine session type based on CLI mode and OpenAI configuration
-      const sessionType = this.mode === 'chat' && this.config.openai.enabled ? 'bridge' : 'echo';
+      // Check if this is a call to extension 123 (test audio)
+      const toExtension = this.extractPhoneNumber(callContext.to);
+      let sessionType: 'echo' | 'bridge' | 'test_audio' = 'echo';
+      
+      if (toExtension === '123') {
+        sessionType = 'test_audio';
+      } else if (this.mode === 'chat' && this.config.openai.enabled) {
+        sessionType = 'bridge';
+      }
 
       // Extract codec information based on session type
-      const codecInfo = this.extractCodecInfo(audioMedia, sessionType, callLogger);
+      const codecInfo = this.extractCodecInfo(audioMedia, sessionType);
       if (!codecInfo) {
-        const supportedCodecs = sessionType === 'bridge' ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
+        const supportedCodecs = (sessionType === 'bridge' || sessionType === 'test_audio') ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
         callLogger.error('No supported codec in offer', { 
           sessionType, 
           supportedCodecs,
@@ -190,10 +197,10 @@ export class SipHandler {
     return match?.[1] ?? 'unknown';
   }
 
-  private extractCodecInfo(audioMedia: any, sessionType: 'echo' | 'bridge', logger: Logger): ExtractedCodecInfo | null {
+  private extractCodecInfo(audioMedia: any, sessionType: 'echo' | 'bridge' | 'test_audio'): ExtractedCodecInfo | null {
     // Different codec support based on session type
-    const supportedCodecs = sessionType === 'bridge' 
-      ? ['pcma', 'pcmu']  // OpenAI only supports G.711 A-law and μ-law
+    const supportedCodecs = (sessionType === 'bridge' || sessionType === 'test_audio')
+      ? ['pcma', 'pcmu']  // OpenAI and test audio only support G.711 A-law and μ-law
       : ['opus', 'pcmu', 'pcma', 'g722'];  // Echo mode supports all codecs
     
     // Standard payload type mappings (RFC 3551)

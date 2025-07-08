@@ -1,6 +1,7 @@
 import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
 import { RtpBridgeSession, RtpBridgeSessionConfig } from './RtpBridgeSession';
+import { RtpTestAudioSession, RtpTestAudioSessionConfig } from './RtpTestAudioSession';
 import { RtpSessionConfig, CodecInfo } from './types';
 import { RtpConfig, OpenAIConfig, RecordingConfig, TranscriptionConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
@@ -11,7 +12,7 @@ export interface CreateSessionOptions {
   remotePort: number;
   codec: CodecInfo;
   sessionId: string;
-  sessionType?: 'echo' | 'bridge';
+  sessionType?: 'echo' | 'bridge' | 'test_audio';
   // OpenAI bridge specific options
   openaiConfig?: OpenAIConfig;
   recordingConfig?: RecordingConfig;
@@ -88,6 +89,14 @@ export class RtpManager {
             onHangUpRequested: options.onHangUpRequested
           };
           session = new RtpBridgeSession(bridgeConfig);
+          break;
+          
+        case 'test_audio':
+          const testAudioConfig: RtpTestAudioSessionConfig = {
+            ...sessionConfig,
+            onHangUpRequested: options.onHangUpRequested
+          };
+          session = new RtpTestAudioSession(testAudioConfig);
           break;
           
         case 'echo':

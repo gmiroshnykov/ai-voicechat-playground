@@ -53,7 +53,7 @@ services:
       # RTP configuration
       - RTP_PORT_MIN=${RTP_PORT_MIN:-10000}
       - RTP_PORT_MAX=${RTP_PORT_MAX:-10100}
-      - JITTER_BUFFER_MS=${JITTER_BUFFER_MS:-40}
+      - JITTER_BUFFER_MS=${JITTER_BUFFER_MS:-60}
 
       # OpenAI configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}

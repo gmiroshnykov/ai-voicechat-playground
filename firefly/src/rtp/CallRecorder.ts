@@ -509,6 +509,13 @@ export class CallRecorder {
     this.logger.debug('Wrote call metadata', { metadataFile });
   }
 
+  /**
+   * Get the call directory path (where conversation.wav is saved)
+   */
+  public getCallDirectory(): string | undefined {
+    return this.callDirectory;
+  }
+
   private async cleanup(): Promise<void> {
     try {
       // Stop recording timer

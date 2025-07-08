@@ -25,6 +25,7 @@ freeswitch/db/
 
 # Call recordings
 firefly/recordings/
+firefly/audio/
 
 # Ephemeral documents
 TODO.md
