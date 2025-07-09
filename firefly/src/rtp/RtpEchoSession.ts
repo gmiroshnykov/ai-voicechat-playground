@@ -4,6 +4,10 @@ import { RtpSession } from './RtpSession';
 import { RtcpHandler } from './RtcpHandler';
 import { CodecHandler } from './CodecHandler';
 import { RtpSessionConfig, FrameSizeDetection } from './types';
+import { 
+  RTP_CONSTANTS,
+  BUFFER_CONSTANTS 
+} from '../constants';
 
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
@@ -24,9 +28,9 @@ export class RtpEchoSession extends RtpSession {
     // Initialize RTP packet for sending
     this.rtpPacket = new rtpJsPackets.RtpPacket();
     this.rtpPacket.setPayloadType(sessionConfig.codec.payload);
-    this.rtpPacket.setSsrc(Math.floor(Math.random() * 0xFFFFFFFF));
-    this.rtpPacket.setSequenceNumber(Math.floor(Math.random() * 0xFFFF));
-    this.rtpPacket.setTimestamp(Math.floor(Math.random() * 0xFFFFFFFF));
+    this.rtpPacket.setSsrc(Math.floor(Math.random() * RTP_CONSTANTS.MAX_SSRC));
+    this.rtpPacket.setSequenceNumber(Math.floor(Math.random() * RTP_CONSTANTS.MAX_SEQUENCE));
+    this.rtpPacket.setTimestamp(Math.floor(Math.random() * RTP_CONSTANTS.MAX_TIMESTAMP));
 
     // Initialize frame size detection
     this.frameSizeDetection = {
@@ -129,14 +133,14 @@ export class RtpEchoSession extends RtpSession {
     if (this.frameSizeDetection.lastReceivedTimestamp !== undefined && 
         this.frameSizeDetection.lastReceivedSeqNum !== undefined) {
       
-      const seqDiff = (seqNum - this.frameSizeDetection.lastReceivedSeqNum + 0x10000) & 0xFFFF;
+      const seqDiff = (seqNum - this.frameSizeDetection.lastReceivedSeqNum + RTP_CONSTANTS.SEQUENCE_WRAPAROUND) & RTP_CONSTANTS.MAX_SEQUENCE;
       
       if (seqDiff === 1) {
         // Consecutive packet - calculate timestamp increment
-        const timestampDiff = (timestamp - this.frameSizeDetection.lastReceivedTimestamp + 0x100000000) & 0xFFFFFFFF;
+        const timestampDiff = (timestamp - this.frameSizeDetection.lastReceivedTimestamp + RTP_CONSTANTS.TIMESTAMP_WRAPAROUND) & RTP_CONSTANTS.MAX_TIMESTAMP;
         
         // Sanity check: frame size should be reasonable
-        if (timestampDiff > 80 && timestampDiff < 1920) {
+        if (timestampDiff > BUFFER_CONSTANTS.MIN_FRAME_SIZE && timestampDiff < BUFFER_CONSTANTS.MAX_FRAME_SIZE) {
           this.frameSizeDetection.detectedSamplesPerFrame = timestampDiff;
 
           // Try to confirm with payload size
@@ -166,7 +170,7 @@ export class RtpEchoSession extends RtpSession {
 
   private async sendInitialSilence(): Promise<void> {
     const silencePayload = this.codecHandler.createSilencePayload(this.config.codec);
-    const totalPackets = 5;
+    const totalPackets = BUFFER_CONSTANTS.INITIAL_SILENCE_PACKETS;
 
     this.logger.debug('Sending initial silence packets', {
       count: totalPackets,
@@ -176,7 +180,7 @@ export class RtpEchoSession extends RtpSession {
     // Send packets with 20ms intervals
     for (let i = 0; i < totalPackets; i++) {
       this.sendRtpPacket(silencePayload, i === 0); // Marker bit on first packet
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise(resolve => setTimeout(resolve, BUFFER_CONSTANTS.SILENCE_PACKET_INTERVAL));
     }
   }
 
@@ -205,11 +209,11 @@ export class RtpEchoSession extends RtpSession {
 
     // Update timestamp and sequence number
     const currentTimestamp = this.rtpPacket.getTimestamp();
-    const newTimestamp = (currentTimestamp + samplesPerFrame) & 0xFFFFFFFF;
+    const newTimestamp = (currentTimestamp + samplesPerFrame) & RTP_CONSTANTS.MAX_TIMESTAMP;
     this.rtpPacket.setTimestamp(newTimestamp);
 
     const currentSeqNum = this.rtpPacket.getSequenceNumber();
-    const newSeqNum = (currentSeqNum + 1) & 0xFFFF;
+    const newSeqNum = (currentSeqNum + 1) & RTP_CONSTANTS.MAX_SEQUENCE;
     this.rtpPacket.setSequenceNumber(newSeqNum);
 
     // Update RTCP handler with current timestamp

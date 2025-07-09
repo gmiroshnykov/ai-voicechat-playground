@@ -3,6 +3,10 @@ import * as path from 'path';
 import { Logger } from '../utils/logger';
 import { CodecType } from './types';
 import { CodecHandler } from './CodecHandler';
+import { 
+  CODEC_SILENCE_VALUES, 
+  AUDIO_CONSTANTS 
+} from '../constants';
 
 export interface OpenAIAudioSourceManagerConfig {
   codec: {
@@ -44,7 +48,7 @@ export class OpenAIAudioSourceManager {
   private rawAudioPath?: string;
   
   // Timing constants
-  private readonly CHUNK_SIZE = 160; // 20ms chunks for G.711
+  private readonly CHUNK_SIZE = AUDIO_CONSTANTS.G711_FRAME_SIZE; // 20ms chunks for G.711
   
   constructor(config: OpenAIAudioSourceManagerConfig) {
     this.config = config;
@@ -149,7 +153,7 @@ export class OpenAIAudioSourceManager {
       const paddedChunk = Buffer.alloc(this.CHUNK_SIZE);
       this.audioBuffer.copy(paddedChunk);
       // Fill remainder with codec-appropriate silence
-      const silenceValue = this.config.codec.name === CodecType.PCMU ? 0xFF : 0xD5;
+      const silenceValue = this.config.codec.name === CodecType.PCMU ? CODEC_SILENCE_VALUES.PCMU : CODEC_SILENCE_VALUES.PCMA;
       paddedChunk.fill(silenceValue, this.audioBuffer.length);
       this.audioQueue.push(paddedChunk);
       
@@ -199,7 +203,7 @@ export class OpenAIAudioSourceManager {
    * Generate a silence packet appropriate for the codec
    */
   private generateSilencePacket(): Buffer {
-    const silencePayload = this.codecHandler.createSilencePayload(this.config.codec, 20);
+    const silencePayload = this.codecHandler.createSilencePayload(this.config.codec, AUDIO_CONSTANTS.DEFAULT_FRAME_DURATION);
     return silencePayload;
   }
   

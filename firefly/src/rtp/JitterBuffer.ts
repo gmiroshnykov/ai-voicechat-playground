@@ -1,5 +1,9 @@
 import { createLogger, Logger } from '../utils/logger';
 import { CodecInfo, RtpPacketInfo } from './types';
+import { 
+  RTP_CONSTANTS,
+  BUFFER_CONSTANTS 
+} from '../constants';
 
 export interface JitterBufferConfig {
   bufferTimeMs: number;
@@ -35,7 +39,7 @@ export class JitterBuffer {
   
   // Duplicate detection (sliding window of recent sequence numbers)
   private readonly recentSeqNums = new Set<number>();
-  private readonly RECENT_WINDOW_SIZE = 100;
+  private readonly RECENT_WINDOW_SIZE = BUFFER_CONSTANTS.RECENT_SEQUENCE_WINDOW;
   
   // Buffer timing
   private bufferTimer?: NodeJS.Timeout;
@@ -102,7 +106,7 @@ export class JitterBuffer {
     }
     
     // Handle 16-bit sequence number wraparound
-    const normalizedExpected = this.expectedSeqNum & 0xFFFF;
+    const normalizedExpected = this.expectedSeqNum & RTP_CONSTANTS.MAX_SEQUENCE;
     return seqNum === normalizedExpected;
   }
 
@@ -152,7 +156,7 @@ export class JitterBuffer {
     if (this.expectedSeqNum === undefined) return;
     
     let processed = 0;
-    let currentSeqNum = this.expectedSeqNum & 0xFFFF;
+    let currentSeqNum = this.expectedSeqNum & RTP_CONSTANTS.MAX_SEQUENCE;
     
     while (this.packetBuffer.has(currentSeqNum)) {
       const bufferedPacket = this.packetBuffer.get(currentSeqNum)!;
@@ -162,7 +166,7 @@ export class JitterBuffer {
       this.updateExpectedSequence(currentSeqNum);
       
       processed++;
-      currentSeqNum = (currentSeqNum + 1) & 0xFFFF;
+      currentSeqNum = (currentSeqNum + 1) & RTP_CONSTANTS.MAX_SEQUENCE;
     }
     
     if (processed > 0) {
@@ -206,12 +210,12 @@ export class JitterBuffer {
     // Process timed-out packets in sequence order
     packetsToProcess.sort((a, b) => {
       // Handle wraparound by comparing in 16-bit space
-      const seqA = a.sequenceNumber & 0xFFFF;
-      const seqB = b.sequenceNumber & 0xFFFF;
+      const seqA = a.sequenceNumber & RTP_CONSTANTS.MAX_SEQUENCE;
+      const seqB = b.sequenceNumber & RTP_CONSTANTS.MAX_SEQUENCE;
       
       // Simple comparison in 16-bit space
-      const diff = (seqB - seqA) & 0xFFFF;
-      return diff > 32768 ? -1 : (diff === 0 ? 0 : 1);
+      const diff = (seqB - seqA) & RTP_CONSTANTS.MAX_SEQUENCE;
+      return diff > RTP_CONSTANTS.SEQUENCE_HALF_RANGE ? -1 : (diff === 0 ? 0 : 1);
     });
     
     // Detect and report lost packets
@@ -245,13 +249,13 @@ export class JitterBuffer {
     
     // Sort processed packets to detect gaps
     const sortedSeqNums = processedPackets
-      .map(p => p.sequenceNumber & 0xFFFF)
+      .map(p => p.sequenceNumber & RTP_CONSTANTS.MAX_SEQUENCE)
       .sort((a, b) => {
-        const diff = (b - a) & 0xFFFF;
-        return diff > 32768 ? -1 : (diff === 0 ? 0 : 1);
+        const diff = (b - a) & RTP_CONSTANTS.MAX_SEQUENCE;
+        return diff > RTP_CONSTANTS.SEQUENCE_HALF_RANGE ? -1 : (diff === 0 ? 0 : 1);
       });
     
-    let currentExpected = this.expectedSeqNum & 0xFFFF;
+    let currentExpected = this.expectedSeqNum & RTP_CONSTANTS.MAX_SEQUENCE;
     
     for (const receivedSeqNum of sortedSeqNums) {
       // Check for gaps between expected and received
@@ -264,16 +268,16 @@ export class JitterBuffer {
           nextReceived: receivedSeqNum
         });
         
-        currentExpected = (currentExpected + 1) & 0xFFFF;
+        currentExpected = (currentExpected + 1) & RTP_CONSTANTS.MAX_SEQUENCE;
       }
       
       // Move past this received packet
-      currentExpected = (currentExpected + 1) & 0xFFFF;
+      currentExpected = (currentExpected + 1) & RTP_CONSTANTS.MAX_SEQUENCE;
     }
   }
 
   private updateExpectedSequence(processedSeqNum: number): void {
-    this.expectedSeqNum = (processedSeqNum + 1) & 0xFFFF;
+    this.expectedSeqNum = (processedSeqNum + 1) & RTP_CONSTANTS.MAX_SEQUENCE;
   }
 
   public getStats(): JitterBufferStats {
@@ -326,11 +330,11 @@ export class JitterBuffer {
     const allPackets = Array.from(this.packetBuffer.values());
     allPackets.sort((a, b) => {
       // Handle wraparound by comparing in 16-bit space
-      const seqA = a.sequenceNumber & 0xFFFF;
-      const seqB = b.sequenceNumber & 0xFFFF;
+      const seqA = a.sequenceNumber & RTP_CONSTANTS.MAX_SEQUENCE;
+      const seqB = b.sequenceNumber & RTP_CONSTANTS.MAX_SEQUENCE;
       
-      const diff = (seqB - seqA) & 0xFFFF;
-      return diff > 32768 ? -1 : (diff === 0 ? 0 : 1);
+      const diff = (seqB - seqA) & RTP_CONSTANTS.MAX_SEQUENCE;
+      return diff > RTP_CONSTANTS.SEQUENCE_HALF_RANGE ? -1 : (diff === 0 ? 0 : 1);
     });
 
     // Process all packets

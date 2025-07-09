@@ -3,6 +3,11 @@ import * as path from 'path';
 import { Logger } from '../utils/logger';
 import { CodecType } from './types';
 import { CodecHandler } from './CodecHandler';
+import { 
+  CODEC_SILENCE_VALUES, 
+  AUDIO_CONSTANTS,
+  BUFFER_CONSTANTS 
+} from '../constants';
 
 export interface AudioSourceManagerConfig {
   codec: {
@@ -40,9 +45,9 @@ export class AudioSourceManager {
   private audioFileEndTime: number = 0;
   
   // Timing constants
-  private readonly PRE_SILENCE_DURATION_MS = 1000;
-  private readonly POST_SILENCE_DURATION_MS = 1000;
-  private readonly CHUNK_SIZE = 160; // 20ms chunks for G.711
+  private readonly PRE_SILENCE_DURATION_MS = BUFFER_CONSTANTS.PRE_SILENCE_DURATION;
+  private readonly POST_SILENCE_DURATION_MS = BUFFER_CONSTANTS.POST_SILENCE_DURATION;
+  private readonly CHUNK_SIZE = AUDIO_CONSTANTS.G711_FRAME_SIZE; // 20ms chunks for G.711
   
   constructor(config: AudioSourceManagerConfig) {
     this.config = config;
@@ -69,7 +74,7 @@ export class AudioSourceManager {
       this.audioFileBuffer = await fs.promises.readFile(audioFilePath);
       
       // Calculate duration and chunk the audio file
-      this.audioFileDurationMs = (this.audioFileBuffer.length / 8); // 8 samples per ms at 8kHz
+      this.audioFileDurationMs = (this.audioFileBuffer.length / AUDIO_CONSTANTS.G711_SAMPLES_PER_MS); // 8 samples per ms at 8kHz
       this.audioFileEndTime = this.PRE_SILENCE_DURATION_MS + this.audioFileDurationMs;
       
       this.chunkAudioFile();
@@ -153,7 +158,7 @@ export class AudioSourceManager {
    * Generate a silence packet appropriate for the codec
    */
   private generateSilencePacket(): Buffer {
-    const silencePayload = this.codecHandler.createSilencePayload(this.config.codec, 20);
+    const silencePayload = this.codecHandler.createSilencePayload(this.config.codec, AUDIO_CONSTANTS.DEFAULT_FRAME_DURATION);
     return silencePayload;
   }
   
@@ -197,7 +202,7 @@ export class AudioSourceManager {
         paddedChunk = Buffer.alloc(this.CHUNK_SIZE);
         chunk.copy(paddedChunk);
         // Fill remainder with codec-appropriate silence
-        const silenceValue = this.config.codec.name === CodecType.PCMU ? 0xFF : 0xD5;
+        const silenceValue = this.config.codec.name === CodecType.PCMU ? CODEC_SILENCE_VALUES.PCMU : CODEC_SILENCE_VALUES.PCMA;
         paddedChunk.fill(silenceValue, chunk.length);
       }
       

@@ -2,6 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createLogger, Logger } from '../utils/logger';
 import { CodecInfo } from './types';
+import { 
+  CODEC_SILENCE_VALUES, 
+  AUDIO_CONSTANTS, 
+  WAV_CONSTANTS,
+  BUFFER_CONSTANTS 
+} from '../constants';
 
 export interface CallRecorderConfig {
   enabled: boolean;
@@ -97,7 +103,7 @@ export class CallRecorder {
       this.isRecording = true;
       
       // Initialize silence value based on codec
-      this.silenceValue = this.config.codec.name === 'PCMA' ? 0xD5 : 0xFF;
+      this.silenceValue = this.config.codec.name === 'PCMA' ? CODEC_SILENCE_VALUES.PCMA : CODEC_SILENCE_VALUES.PCMU;
       
       // Start continuous timeline recording
       this.startContinuousRecording();
@@ -199,7 +205,7 @@ export class CallRecorder {
   private startContinuousRecording(): void {
     this.recordingTimer = setInterval(() => {
       this.recordTimelineFrame();
-    }, 20); // Every 20ms
+    }, BUFFER_CONSTANTS.SILENCE_PACKET_INTERVAL); // Every 20ms
     
     this.logger.debug('Started continuous timeline recording');
   }
@@ -224,7 +230,7 @@ export class CallRecorder {
     }
 
     try {
-      const frameSize = 160; // 160 bytes = 20ms at 8kHz
+      const frameSize = AUDIO_CONSTANTS.G711_FRAME_SIZE; // 160 bytes = 20ms at 8kHz
       
       // Consume caller audio from buffer (or use silence)
       const callerFrame = this.consumeAudioFromBuffer(this.callerAudioBuffer, frameSize);
@@ -302,10 +308,10 @@ export class CallRecorder {
    * Write a timeline frame (caller + AI audio)
    */
   private writeTimelineFrame(callerFrame: Buffer, aiFrame: Buffer): void {
-    const frameSize = 160;
+    const frameSize = AUDIO_CONSTANTS.G711_FRAME_SIZE;
     
     // Interleave stereo audio (caller left, AI right)
-    const stereoFrame = Buffer.alloc(frameSize * 2);
+    const stereoFrame = Buffer.alloc(AUDIO_CONSTANTS.STEREO_FRAME_SIZE);
     for (let i = 0; i < frameSize; i++) {
       stereoFrame[i * 2] = callerFrame[i]!;     // Left channel (caller)
       stereoFrame[i * 2 + 1] = aiFrame[i]!;    // Right channel (AI)
@@ -359,7 +365,7 @@ export class CallRecorder {
 
   private createStereoWAVHeader(): Buffer {
     // WAV header for stereo G.711 PCMA/PCMU (standard 44-byte header)
-    const header = Buffer.alloc(44);
+    const header = Buffer.alloc(WAV_CONSTANTS.HEADER_SIZE);
     
     // RIFF header
     header.write('RIFF', 0);
@@ -371,14 +377,14 @@ export class CallRecorder {
     header.writeUInt32LE(16, 16); // Format chunk size (16 for standard PCM)
     
     // Audio format: 6 = A-law, 7 = μ-law
-    const formatCode = this.config.codec.name === 'PCMA' ? 6 : 7;
+    const formatCode = this.config.codec.name === 'PCMA' ? WAV_CONSTANTS.FORMAT_ALAW : WAV_CONSTANTS.FORMAT_MULAW;
     header.writeUInt16LE(formatCode, 20);
     
-    header.writeUInt16LE(2, 22); // Channels (stereo)
-    header.writeUInt32LE(8000, 24); // Sample rate
-    header.writeUInt32LE(16000, 28); // Byte rate (8000 Hz * 2 channels * 8 bits / 8)
-    header.writeUInt16LE(2, 32); // Block align (2 bytes per sample frame)
-    header.writeUInt16LE(8, 34); // Bits per sample
+    header.writeUInt16LE(WAV_CONSTANTS.STEREO_CHANNELS, 22); // Channels (stereo)
+    header.writeUInt32LE(WAV_CONSTANTS.SAMPLE_RATE, 24); // Sample rate
+    header.writeUInt32LE(WAV_CONSTANTS.BYTE_RATE, 28); // Byte rate (8000 Hz * 2 channels * 8 bits / 8)
+    header.writeUInt16LE(WAV_CONSTANTS.BLOCK_ALIGN, 32); // Block align (2 bytes per sample frame)
+    header.writeUInt16LE(WAV_CONSTANTS.BITS_PER_SAMPLE, 34); // Bits per sample
     
     // Data chunk header
     header.write('data', 36);
@@ -390,8 +396,8 @@ export class CallRecorder {
   private async finalizeWAVFiles(): Promise<void> {
     if (this.stereoStream) {
       // Calculate total stereo data size based on frames written
-      const frameSize = 160; // mono frame size
-      const totalDataSize = this.totalFramesWritten * frameSize * 2; // stereo
+      const frameSize = AUDIO_CONSTANTS.G711_FRAME_SIZE; // mono frame size
+      const totalDataSize = this.totalFramesWritten * frameSize * WAV_CONSTANTS.STEREO_CHANNELS; // stereo
       
       this.logger.debug('Finalizing WAV file', {
         totalFramesWritten: this.totalFramesWritten,
@@ -413,7 +419,7 @@ export class CallRecorder {
           const fd = await fs.promises.open(filePath, 'r+');
           
           // Update file size in RIFF header (total file size - 8)
-          const fileSize = 44 + dataSize - 8;
+          const fileSize = WAV_CONSTANTS.HEADER_SIZE + dataSize - 8;
           await fd.write(Buffer.from([
             fileSize & 0xff,
             (fileSize >> 8) & 0xff,
