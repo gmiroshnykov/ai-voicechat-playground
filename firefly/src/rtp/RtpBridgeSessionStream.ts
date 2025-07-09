@@ -211,7 +211,7 @@ export class RtpBridgeSessionStream extends RtpSession {
   }
 
   private async setupStreamPipeline(): Promise<void> {
-    this.logger.info('Setting up stream-based audio pipeline');
+    this.logger.debug('Setting up stream-based audio pipeline');
 
     // Create RTP to audio stream
     const rtpToAudioConfig: RtpToAudioStreamConfig = {
@@ -290,7 +290,7 @@ export class RtpBridgeSessionStream extends RtpSession {
       this.forwardToOpenAI(audioBuffer);
     });
 
-    this.logger.info('Stream pipeline connected successfully', {
+    this.logger.debug('Stream pipeline connected successfully', {
       hasRecording: !!this.callerRecorderStream,
       jitterBufferMs: this.bridgeConfig.jitterBufferMs ?? 60
     });
@@ -350,7 +350,7 @@ export class RtpBridgeSessionStream extends RtpSession {
     
     this.tempoAdjustTransform = new TempoAdjustTransform(tempoAdjustConfig);
     
-    this.logger.info('AI tempo adjustment transform initialized', {
+    this.logger.debug('AI tempo adjustment transform initialized', {
       tempo: tempo,
       codec: this.config.codec.name
     });
@@ -375,7 +375,7 @@ export class RtpBridgeSessionStream extends RtpSession {
         }
       });
       
-      this.logger.info('AI audio processing pipeline set up with tempo adjustment', {
+      this.logger.debug('AI audio processing pipeline set up with tempo adjustment', {
         tempo: this.bridgeConfig.aiTempoAdjustment?.tempo
       });
     } else {
@@ -389,7 +389,7 @@ export class RtpBridgeSessionStream extends RtpSession {
         }
       });
       
-      this.logger.info('AI audio processing pipeline set up without tempo adjustment');
+      this.logger.debug('AI audio processing pipeline set up without tempo adjustment');
     }
   }
 
@@ -423,7 +423,7 @@ export class RtpBridgeSessionStream extends RtpSession {
       return;
     }
     
-    this.logger.info('Starting continuous RTP stream for OpenAI bridge');
+    this.logger.debug('Starting continuous RTP stream for OpenAI bridge');
     
     // Create and configure continuous scheduler
     const schedulerConfig: RtpContinuousSchedulerConfig = {
@@ -658,7 +658,7 @@ export class RtpBridgeSessionStream extends RtpSession {
         this.config.remoteAddress !== rinfo.address || 
         this.config.remotePort !== rinfo.port) {
       
-      this.logger.debug('RTP latching to source', {
+      this.logger.trace('RTP latching to source', {
         address: rinfo.address,
         port: rinfo.port,
         wasExpecting: `${this.config.remoteAddress}:${this.config.remotePort}`

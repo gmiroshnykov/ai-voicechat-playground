@@ -107,7 +107,7 @@ export class RtpToAudioStream extends Readable {
         this.config.remoteAddress !== rinfo.address || 
         this.config.remotePort !== rinfo.port) {
       
-      this.logger.debug('RTP latching to source', {
+      this.logger.trace('RTP latching to source', {
         address: rinfo.address,
         port: rinfo.port,
         wasExpecting: `${this.config.remoteAddress}:${this.config.remotePort}`
@@ -133,7 +133,7 @@ export class RtpToAudioStream extends Readable {
         const firstByte = msg.length > 0 ? msg[0]! : 0;
         const rtpVersion = (firstByte >> 6) & 0x3;
         
-        this.logger.debug('RTP validation failed, checking manually', {
+        this.logger.trace('RTP validation failed, checking manually', {
           packetLength: msg.length,
           firstByte: firstByte?.toString(16) || '0',
           rtpVersion,
@@ -151,13 +151,13 @@ export class RtpToAudioStream extends Readable {
         
         // Log version mismatches but continue processing
         if (rtpVersion !== 2) {
-          this.logger.debug('RTP version mismatch, continuing anyway', {
+          this.logger.trace('RTP version mismatch, continuing anyway', {
             rtpVersion,
             expectedVersion: 2
           });
         }
         
-        this.logger.debug('Accepting packet despite RTP.js validation failure');
+        this.logger.trace('Accepting packet despite RTP.js validation failure');
       }
 
       // Parse incoming packet

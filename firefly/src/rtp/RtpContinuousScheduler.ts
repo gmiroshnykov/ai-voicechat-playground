@@ -138,7 +138,7 @@ export class RtpContinuousScheduler {
       this.packetCount++;
       this.expectedPacketTime += this.config.targetInterval;
       
-      this.logger.debug('Sent buffer priming packet', {
+      this.logger.trace('Sent buffer priming packet', {
         sessionId: this.config.sessionId,
         packetNumber: this.packetCount,
         callTimeMs

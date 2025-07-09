@@ -174,7 +174,7 @@ export class JitterBuffer {
       
       if (processed > 1) {
         this.stats.packetsReordered += processed - 1;
-        this.logger.debug('Processed consecutive buffered packets', {
+        this.logger.trace('Processed consecutive buffered packets', {
           count: processed,
           reordered: processed - 1
         });

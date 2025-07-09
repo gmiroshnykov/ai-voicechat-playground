@@ -231,7 +231,7 @@ export class RtpManager {
           this.nextAvailablePort = this.rtpConfig.portMin;
         }
 
-        this.logger.debug('Allocated RTP port', { 
+        this.logger.trace('Allocated RTP port', { 
           rtpPort: allocatedPort,
           rtcpPort: allocatedPort + 1
         });
@@ -257,7 +257,7 @@ export class RtpManager {
     this.usedPorts.delete(port);
     this.usedPorts.delete(port + 1); // Release RTCP port too
     
-    this.logger.debug('Released RTP port', { 
+    this.logger.trace('Released RTP port', { 
       rtpPort: port,
       rtcpPort: port + 1
     });
