@@ -80,7 +80,7 @@ export class OpenAIAudioSourceManager {
    * Returns silence by default, or OpenAI audio if available
    * Returns null when the call should end
    */
-  public getNextPacket(callTimeMs: number): { packet: Buffer; isOpenAIAudio: boolean } | null {
+  public getNextPacket(callTimeMs: number): { packet: Buffer; isAudioDataAvailable: boolean } | null {
     if (!this.isCallActive) {
       return null;
     }
@@ -93,11 +93,11 @@ export class OpenAIAudioSourceManager {
         callTimeMs,
         queueRemaining: this.audioQueue.length
       });
-      return { packet: audioChunk, isOpenAIAudio: true };
+      return { packet: audioChunk, isAudioDataAvailable: true };
     }
     
     // No OpenAI audio available, return silence
-    return { packet: this.generateSilencePacket(), isOpenAIAudio: false };
+    return { packet: this.generateSilencePacket(), isAudioDataAvailable: false };
   }
   
   /**

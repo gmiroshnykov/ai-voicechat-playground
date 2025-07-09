@@ -427,7 +427,7 @@ export class RtpBridgeSession extends RtpSession {
       return;
     }
     
-    this.logger.info('Starting continuous RTP stream for OpenAI bridge');
+    this.logger.debug('Starting continuous RTP stream for OpenAI bridge');
     
     // Create and configure continuous scheduler
     const schedulerConfig: RtpContinuousSchedulerConfig = {
@@ -440,8 +440,13 @@ export class RtpBridgeSession extends RtpSession {
         const result = this.openaiAudioSourceManager!.getNextPacket(callTimeMs);
         
         if (result) {
-          // Send the packet (either silence or OpenAI audio) with proper recording
-          this.sendAudioPacket(result.packet, result.isOpenAIAudio);
+          // Send the packet (either silence or OpenAI audio)
+          this.sendAudioPacket(result.packet, result.isAudioDataAvailable);
+          
+          // Record AI audio based on call timeline (not send time) for proper synchronization
+          if (this.callRecorder && result.isAudioDataAvailable) {
+            this.callRecorder.addAIAudio(result.packet);
+          }
           
           // Log phase information every 100 packets
           if (packetNumber % 100 === 0) {
@@ -451,19 +456,22 @@ export class RtpBridgeSession extends RtpSession {
               callTimeMs,
               phase: phase.phase,
               queueLength: phase.queueLength,
-              isOpenAIAudio: result.isOpenAIAudio
+              isAudioDataAvailable: result.isAudioDataAvailable
             });
           }
           
           return true; // Continue sending
         } else {
           // Call should end
-          this.logger.info('OpenAI audio source manager signaled end of call');
+          this.logger.debug('OpenAI audio source manager signaled end of call');
           return false; // Stop sending
         }
       },
       onComplete: async () => {
-        this.logger.info('Continuous RTP stream completed - call ended by audio source manager');
+        this.logger.debug('Continuous RTP stream completed - hanging up');
+        if (this.onHangUpRequested) {
+          await this.onHangUpRequested();
+        }
       }
     };
     
@@ -692,11 +700,10 @@ export class RtpBridgeSession extends RtpSession {
   }
 
 
-  private sendAudioPacket(payload: Buffer, isOpenAIAudio: boolean = false, marker: boolean = false): void {
-    // Add AI audio to continuous recording timeline when sending to caller
-    if (this.callRecorder && isOpenAIAudio) {
-      this.callRecorder.addAIAudio(payload);
-    }
+  private sendAudioPacket(payload: Buffer, _isAudioDataAvailable: boolean = false, marker: boolean = false): void {
+    // Note: Recording of AI audio is handled separately to avoid timing issues
+    // with burst packet sending. AI audio should be recorded based on play timeline,
+    // not send timeline.
 
     // Update RTP packet fields
     this.rtpPacket.setMarker(marker);

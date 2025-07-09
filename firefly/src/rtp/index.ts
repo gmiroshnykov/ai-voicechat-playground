@@ -1,7 +1,18 @@
 export { RtpSession } from './RtpSession';
 export { RtpEchoSession } from './RtpEchoSession';
 export { RtpBridgeSession } from './RtpBridgeSession';
+export { RtpBridgeSessionStream } from './RtpBridgeSessionStream';
 export { RtpManager } from './RtpManager';
 export { RtcpHandler } from './RtcpHandler';
 export { CodecHandler } from './CodecHandler';
+export { RtpToAudioStream } from './RtpToAudioStream';
+export { AudioToRtpStream } from './AudioToRtpStream';
+export { JitterBufferTransform } from './JitterBufferTransform';
+export { CallRecorderStream } from './CallRecorderStream';
+export { StereoRecorderStream } from './StereoRecorderStream';
+export { ChannelRecorderStream } from './ChannelRecorderStream';
+export { SpeedAdjustTransform } from './SpeedAdjustTransform';
+export { TeeStream, createTee, createPassThrough } from './StreamUtils';
+export { PacketSchedulerStream, createRtpPacketScheduler } from './PacketSchedulerStream';
+export { AudioSourceStream, createAudioSourceStream } from './AudioSourceStream';
 export * from './types';

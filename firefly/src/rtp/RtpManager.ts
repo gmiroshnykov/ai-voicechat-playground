@@ -1,6 +1,7 @@
 import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
 import { RtpBridgeSession, RtpBridgeSessionConfig } from './RtpBridgeSession';
+import { RtpBridgeSessionStream, RtpBridgeSessionStreamConfig } from './RtpBridgeSessionStream';
 import { RtpTestAudioSession, RtpTestAudioSessionConfig } from './RtpTestAudioSession';
 import { RtpSessionConfig, CodecInfo } from './types';
 import { RtpConfig, OpenAIConfig, RecordingConfig, TranscriptionConfig } from '../config/types';
@@ -12,7 +13,7 @@ export interface CreateSessionOptions {
   remotePort: number;
   codec: CodecInfo;
   sessionId: string;
-  sessionType?: 'echo' | 'bridge' | 'test_audio';
+  sessionType?: 'echo' | 'bridge' | 'bridge_stream' | 'test_audio';
   // OpenAI bridge specific options
   openaiConfig?: OpenAIConfig;
   recordingConfig?: RecordingConfig;
@@ -22,6 +23,13 @@ export interface CreateSessionOptions {
     diversionHeader?: string;
   };
   onHangUpRequested?: () => Promise<void>;
+  // Stream-based bridge specific options
+  streamConfig?: {
+    speedAdjustment?: {
+      enabled: boolean;
+      speedRatio: number;
+    };
+  };
 }
 
 export class RtpManager {
@@ -89,6 +97,31 @@ export class RtpManager {
             onHangUpRequested: options.onHangUpRequested
           };
           session = new RtpBridgeSession(bridgeConfig);
+          break;
+          
+        case 'bridge_stream':
+          if (!options.openaiConfig || !options.openaiConfig.enabled) {
+            throw new RtpSessionError('Bridge stream session requires OpenAI configuration', { 
+              sessionId: options.sessionId 
+            });
+          }
+          if (!options.openaiConfig.apiKey) {
+            throw new RtpSessionError('Bridge stream session requires OpenAI API key', { 
+              sessionId: options.sessionId 
+            });
+          }
+          
+          const bridgeStreamConfig: RtpBridgeSessionStreamConfig = {
+            ...sessionConfig,
+            openaiApiKey: options.openaiConfig.apiKey,
+            jitterBufferMs: this.rtpConfig.jitterBufferMs,
+            recordingConfig: options.recordingConfig,
+            transcriptionConfig: options.transcriptionConfig,
+            caller: options.caller,
+            onHangUpRequested: options.onHangUpRequested,
+            speedAdjustment: options.streamConfig?.speedAdjustment
+          };
+          session = new RtpBridgeSessionStream(bridgeStreamConfig);
           break;
           
         case 'test_audio':

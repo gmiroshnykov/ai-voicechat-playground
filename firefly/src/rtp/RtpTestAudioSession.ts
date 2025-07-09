@@ -2,7 +2,7 @@ import { packets as rtpJsPackets, utils as rtpJsUtils } from 'rtp.js';
 import { RtpSession } from './RtpSession';
 import { RtpSessionConfig, CodecType } from './types';
 import { CodecHandler } from './CodecHandler';
-import { RtpContinuousScheduler, RtpContinuousSchedulerConfig } from './RtpContinuousScheduler';
+import { AdaptiveRtpScheduler, createAdaptiveRtpScheduler } from './AdaptiveRtpScheduler';
 import { AudioSourceManager, AudioSourceManagerConfig } from './AudioSourceManager';
 
 export interface RtpTestAudioSessionConfig extends RtpSessionConfig {
@@ -17,7 +17,7 @@ export class RtpTestAudioSession extends RtpSession {
   private rtpPacket: RtpPacket;
   private samplesPerFrame: number;
   private testConfig: RtpTestAudioSessionConfig;
-  private continuousScheduler?: RtpContinuousScheduler;
+  private adaptiveScheduler?: AdaptiveRtpScheduler;
   private audioSourceManager?: AudioSourceManager;
 
   constructor(sessionConfig: RtpTestAudioSessionConfig) {
@@ -47,10 +47,10 @@ export class RtpTestAudioSession extends RtpSession {
   }
 
   protected async onStop(): Promise<void> {
-    // Stop continuous scheduler
-    if (this.continuousScheduler) {
-      this.continuousScheduler.stop();
-      this.continuousScheduler = undefined;
+    // Stop adaptive scheduler
+    if (this.adaptiveScheduler) {
+      this.adaptiveScheduler.stop();
+      this.adaptiveScheduler = undefined;
     }
     
     // Clean up audio source manager
@@ -87,15 +87,14 @@ export class RtpTestAudioSession extends RtpSession {
     
     const totalDurationMs = this.audioSourceManager.getTotalCallDurationMs();
     
-    this.logger.info('Starting continuous RTP stream for test audio', {
+    this.logger.debug('Starting adaptive RTP stream for test audio', {
       totalDurationMs,
       totalDurationSeconds: totalDurationMs / 1000
     });
-    
-    // Create and configure continuous scheduler
-    const schedulerConfig: RtpContinuousSchedulerConfig = {
-      targetInterval: 20, // 20ms target interval
-      logFrequency: 50, // Log every 50 packets
+
+    // Use adaptive buffer-depth scheduler
+    this.adaptiveScheduler = createAdaptiveRtpScheduler({
+      targetBufferMs: 60, // 60ms target buffer depth
       logger: this.logger,
       sessionId: this.config.sessionId || 'test-audio-session',
       onPacketSend: (packetNumber: number, callTimeMs: number) => {
@@ -109,37 +108,37 @@ export class RtpTestAudioSession extends RtpSession {
           // Log phase information every 50 packets
           if (packetNumber % 50 === 0) {
             const phase = this.audioSourceManager!.getCallPhase(callTimeMs);
-            this.logger.debug('Continuous RTP stream status', {
+            this.logger.debug('Adaptive RTP stream status', {
               packetNumber,
               callTimeMs,
               phase: phase.phase,
-              remainingMs: phase.remaining
+              remainingMs: phase.remaining,
+              bufferState: this.adaptiveScheduler!.getBufferState()
             });
           }
           
           return true; // Continue sending
         } else {
           // Call should end
-          this.logger.info('Audio source manager signaled end of call');
+          this.logger.debug('Audio source manager signaled end of call');
           return false; // Stop sending
         }
       },
       onComplete: async () => {
-        this.logger.info('Continuous RTP stream completed - hanging up');
+        this.logger.debug('Adaptive RTP stream completed - hanging up');
         
         // Hang up the call
         if (this.testConfig.onHangUpRequested) {
           try {
             await this.testConfig.onHangUpRequested();
           } catch (error) {
-            this.logger.error('Error hanging up call after continuous stream completion', error);
+            this.logger.error('Error hanging up call after adaptive stream completion', error);
           }
         }
       }
-    };
+    });
     
-    this.continuousScheduler = new RtpContinuousScheduler(schedulerConfig);
-    this.continuousScheduler.start();
+    this.adaptiveScheduler.start();
   }
 
   private sendAudioPacket(payload: Buffer, marker: boolean = false): void {

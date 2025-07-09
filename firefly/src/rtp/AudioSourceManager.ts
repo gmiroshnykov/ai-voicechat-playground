@@ -64,7 +64,7 @@ export class AudioSourceManager {
       const audioFileName = this.config.codec.name === CodecType.PCMU ? 'welcome.pcmu' : 'welcome.pcma';
       const audioFilePath = path.join(__dirname, '../../audio', audioFileName);
       
-      this.logger.info('Loading audio file for continuous streaming', { 
+      this.logger.debug('Loading audio file for continuous streaming', { 
         file: audioFileName,
         codec: this.config.codec.name,
         sessionId: this.config.sessionId
@@ -79,7 +79,7 @@ export class AudioSourceManager {
       
       this.chunkAudioFile();
       
-      this.logger.info('Audio file loaded and chunked for continuous streaming', {
+      this.logger.debug('Audio file loaded and chunked for continuous streaming', {
         sessionId: this.config.sessionId,
         fileSizeBytes: this.audioFileBuffer.length,
         durationMs: this.audioFileDurationMs,

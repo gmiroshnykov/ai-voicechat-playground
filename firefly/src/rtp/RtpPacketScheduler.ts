@@ -69,7 +69,7 @@ export class RtpPacketScheduler {
     this.packetCount = 0;
     this.delays = [];
     
-    this.logger.info('Starting RTP packet scheduler with dynamic timing', {
+    this.logger.debug('Starting RTP packet scheduler with dynamic timing', {
       targetInterval: this.config.targetInterval,
       sessionId: this.config.sessionId,
       startTime: this.startTime
@@ -97,7 +97,7 @@ export class RtpPacketScheduler {
       this.timer = undefined;
     }
     
-    this.logger.info('RTP packet scheduler stopped', {
+    this.logger.debug('RTP packet scheduler stopped', {
       sessionId: this.config.sessionId,
       stats: this.getStats()
     });
@@ -174,7 +174,7 @@ export class RtpPacketScheduler {
     
     // Log timing details every N packets
     if (this.packetCount % this.config.logFrequency === 0) {
-      this.logger.info('Dynamic timing status', {
+      this.logger.debug('Dynamic timing status', {
         sessionId: this.config.sessionId,
         packetCount: this.packetCount,
         currentDrift: timeSinceExpected,
@@ -217,7 +217,7 @@ export class RtpPacketScheduler {
    * Handle completion of packet scheduling
    */
   private handleCompletion(): void {
-    this.logger.info('RTP packet scheduling completed', {
+    this.logger.debug('RTP packet scheduling completed', {
       sessionId: this.config.sessionId,
       stats: this.getStats()
     });

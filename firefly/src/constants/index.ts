@@ -59,6 +59,8 @@ export const AUDIO_CONSTANTS = {
   G711_CHANNELS: 1,
   /** Default G.722 channel count */
   G722_CHANNELS: 1,
+  /** Default sample rate (same as G.711) */
+  SAMPLE_RATE: 8000,
 } as const;
 
 /**

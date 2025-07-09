@@ -8,7 +8,10 @@
     "start": "npm run build && node dist/index.js",
     "dev": "npm run build && node dist/index.js",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && npm run test:run",
+    "test:run": "node --test 'dist/test/**/*.test.js'",
+    "test:rtp-timing": "npm run build && node dist/test/runRtpTimingTest.js"
   },
   "keywords": [],
   "author": "",

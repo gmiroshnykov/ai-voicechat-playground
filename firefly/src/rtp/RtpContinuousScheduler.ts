@@ -7,7 +7,7 @@ export interface RtpContinuousSchedulerConfig {
   sessionId: string;
   
   // Callback functions
-  onPacketSend: (packetNumber: number, callTimeMs: number) => boolean; // Returns true to continue, false to stop
+  onPacketSend: (packetNumber: number, callTimeMs: number) => boolean; // Callback for packet sending - return false to end scheduling
   onComplete?: () => void; // Called when scheduling completes
 }
 
@@ -70,7 +70,7 @@ export class RtpContinuousScheduler {
     this.packetCount = 0;
     this.delays = [];
     
-    this.logger.info('Starting RTP continuous scheduler with simple setInterval', {
+    this.logger.debug('Starting RTP continuous scheduler with simple setInterval', {
       targetInterval: this.config.targetInterval,
       sessionId: this.config.sessionId,
       startTime: this.startTime
@@ -98,7 +98,7 @@ export class RtpContinuousScheduler {
       this.timer = undefined;
     }
     
-    this.logger.info('RTP continuous scheduler stopped', {
+    this.logger.debug('RTP continuous scheduler stopped', {
       sessionId: this.config.sessionId,
       stats: this.getStats()
     });
@@ -134,22 +134,15 @@ export class RtpContinuousScheduler {
     // Send 3 packets immediately to prime the 60ms jitter buffer  
     for (let i = 0; i < 3; i++) {
       const callTimeMs = Date.now() - this.startTime;
-      const shouldContinue = this.config.onPacketSend(this.packetCount + 1, callTimeMs);
+      this.config.onPacketSend(this.packetCount + 1, callTimeMs);
+      this.packetCount++;
+      this.expectedPacketTime += this.config.targetInterval;
       
-      if (shouldContinue) {
-        this.packetCount++;
-        this.expectedPacketTime += this.config.targetInterval;
-        
-        this.logger.debug('Sent buffer priming packet', {
-          sessionId: this.config.sessionId,
-          packetNumber: this.packetCount,
-          callTimeMs
-        });
-      } else {
-        // Call ended during priming
-        this.handleCompletion();
-        return;
-      }
+      this.logger.debug('Sent buffer priming packet', {
+        sessionId: this.config.sessionId,
+        packetNumber: this.packetCount,
+        callTimeMs
+      });
     }
   }
   
@@ -176,36 +169,45 @@ export class RtpContinuousScheduler {
       
       // Try to send the packet
       const shouldContinue = this.config.onPacketSend(this.packetCount + 1, callTimeMs);
+      this.packetCount++;
       
-      if (shouldContinue) {
-        this.packetCount++;
-        
-        // Log status every N packets
-        if (this.packetCount % this.config.logFrequency === 0) {
-          const actualDelay = Date.now() - nextPacketAbsoluteTime;
-          this.logger.debug('Absolute time-based RTP pacing status', {
-            sessionId: this.config.sessionId,
-            packetCount: this.packetCount,
-            callTimeMs,
-            targetInterval: this.config.targetInterval,
-            scheduledDelay: delay,
-            actualDelay: actualDelay
-          });
-        }
-        
-        this.logger.trace('Sent absolute-timed packet', {
+      // Check if we should stop scheduling
+      if (!shouldContinue) {
+        this.logger.debug('Scheduler stopped by packet send callback', {
           sessionId: this.config.sessionId,
-          packetNumber: this.packetCount,
-          callTimeMs,
-          scheduledDelay: delay
+          totalPackets: this.packetCount
         });
+        this.stop();
         
-        // Schedule next packet
-        this.scheduleNextPacket();
-      } else {
-        // Call ended or should stop
-        this.handleCompletion();
+        // Call completion callback if provided
+        if (this.config.onComplete) {
+          this.config.onComplete();
+        }
+        return;
       }
+      
+      // Log status every N packets
+      if (this.packetCount % this.config.logFrequency === 0) {
+        const actualDelay = Date.now() - nextPacketAbsoluteTime;
+        this.logger.debug('Absolute time-based RTP pacing status', {
+          sessionId: this.config.sessionId,
+          packetCount: this.packetCount,
+          callTimeMs,
+          targetInterval: this.config.targetInterval,
+          scheduledDelay: delay,
+          actualDelay: actualDelay
+        });
+      }
+      
+      this.logger.trace('Sent absolute-timed packet', {
+        sessionId: this.config.sessionId,
+        packetNumber: this.packetCount,
+        callTimeMs,
+        scheduledDelay: delay
+      });
+      
+      // Schedule next packet
+      this.scheduleNextPacket();
     }, delay);
   }
   
@@ -213,17 +215,17 @@ export class RtpContinuousScheduler {
   /**
    * Handle completion of continuous scheduling
    */
-  private handleCompletion(): void {
-    this.logger.info('RTP continuous scheduling completed', {
-      sessionId: this.config.sessionId,
-      stats: this.getStats()
-    });
-    
-    this.stop();
-    
-    // Call completion callback if provided
-    if (this.config.onComplete) {
-      this.config.onComplete();
-    }
-  }
+  // private handleCompletion(): void {
+  //   this.logger.info('RTP continuous scheduling completed', {
+  //     sessionId: this.config.sessionId,
+  //     stats: this.getStats()
+  //   });
+  //   
+  //   this.stop();
+  //   
+  //   // Call completion callback if provided
+  //   if (this.config.onComplete) {
+  //     this.config.onComplete();
+  //   }
+  // }
 }
