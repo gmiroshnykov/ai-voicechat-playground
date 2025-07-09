@@ -1,31 +1,36 @@
 import { packets as rtpJsPackets, utils as rtpJsUtils } from 'rtp.js';
 import { RtpSession } from './RtpSession';
 import { RtpSessionConfig, CodecType } from './types';
-import { CodecHandler } from './CodecHandler';
 import { AdaptiveRtpScheduler, createAdaptiveRtpScheduler } from './AdaptiveRtpScheduler';
-import { AudioSourceManager, AudioSourceManagerConfig } from './AudioSourceManager';
+import { TempoAdjustTransform, TempoAdjustTransformConfig } from './TempoAdjustTransform';
+import { AudioFileStream, AudioFileStreamConfig } from './AudioFileStream';
+import { AudioPacketizer, AudioPacketizerConfig, AudioPacket } from './AudioPacketizer';
 
 export interface RtpTestAudioSessionConfig extends RtpSessionConfig {
   onHangUpRequested?: () => Promise<void>;
+  tempoAdjustment?: {
+    tempo: number; // 1.0 = normal speed, 1.2 = 20% faster
+  };
 }
 
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
 
 export class RtpTestAudioSession extends RtpSession {
-  private codecHandler: CodecHandler;
   private rtpPacket: RtpPacket;
-  private samplesPerFrame: number;
   private testConfig: RtpTestAudioSessionConfig;
   private adaptiveScheduler?: AdaptiveRtpScheduler;
-  private audioSourceManager?: AudioSourceManager;
+  private tempoAdjustTransform?: TempoAdjustTransform;
+  
+  // Stream-based components
+  private audioFileStream?: AudioFileStream;
+  private audioPacketizer?: AudioPacketizer;
+  private audioPacketQueue: AudioPacket[] = [];
 
   constructor(sessionConfig: RtpTestAudioSessionConfig) {
     super(sessionConfig);
     this.testConfig = sessionConfig;
     
-    this.codecHandler = new CodecHandler();
-    this.samplesPerFrame = this.codecHandler.getSamplesPerFrame(sessionConfig.codec);
     
     // Initialize RTP packet for sending
     this.rtpPacket = new rtpJsPackets.RtpPacket();
@@ -39,11 +44,8 @@ export class RtpTestAudioSession extends RtpSession {
     // Set up RTP packet handling
     this.rtpSocket!.on('message', this.handleRtpPacket.bind(this));
 
-    // Initialize audio source manager
-    await this.initializeAudioSourceManager();
-    
-    // Start continuous RTP streaming
-    this.startContinuousRtpStream();
+    // Always use stream-based approach
+    await this.initializeStreamBasedAudio();
   }
 
   protected async onStop(): Promise<void> {
@@ -53,13 +55,51 @@ export class RtpTestAudioSession extends RtpSession {
       this.adaptiveScheduler = undefined;
     }
     
-    // Clean up audio source manager
-    this.audioSourceManager = undefined;
+    // Clean up stream components
+    if (this.audioFileStream) {
+      this.audioFileStream.destroy();
+      this.audioFileStream = undefined;
+    }
+    
+    if (this.audioPacketizer) {
+      this.audioPacketizer.destroy();
+      this.audioPacketizer = undefined;
+    }
+    
+    // Destroy tempo adjustment transform
+    if (this.tempoAdjustTransform) {
+      this.tempoAdjustTransform.destroy();
+      this.tempoAdjustTransform = undefined;
+    }
+    
+    // Clear packet queue
+    this.audioPacketQueue = [];
   }
 
-  private async initializeAudioSourceManager(): Promise<void> {
+  private async initializeTempoAdjustment(): Promise<void> {
+    const tempo = this.testConfig.tempoAdjustment?.tempo;
+    if (!tempo || tempo === 1.0) {
+      return; // No adjustment needed
+    }
+
+    const tempoAdjustConfig: TempoAdjustTransformConfig = {
+      tempo: tempo,
+      codecInfo: this.config.codec,
+      sessionId: this.config.sessionId || 'test-audio-session'
+    };
+    
+    this.tempoAdjustTransform = new TempoAdjustTransform(tempoAdjustConfig);
+    
+    this.logger.info('Test audio tempo adjustment transform initialized', {
+      tempo: tempo,
+      codec: this.config.codec.name
+    });
+  }
+
+  private async initializeStreamBasedAudio(): Promise<void> {
     try {
-      const audioSourceConfig: AudioSourceManagerConfig = {
+      // Initialize audio file stream
+      const audioFileConfig: AudioFileStreamConfig = {
         codec: {
           name: this.config.codec.name as CodecType,
           payload: this.config.codec.payload,
@@ -70,26 +110,95 @@ export class RtpTestAudioSession extends RtpSession {
         sessionId: this.config.sessionId || 'test-audio-session'
       };
       
-      this.audioSourceManager = new AudioSourceManager(audioSourceConfig);
-      await this.audioSourceManager.initialize();
+      this.audioFileStream = new AudioFileStream(audioFileConfig);
+      await this.audioFileStream.initialize();
+      
+      // Initialize audio packetizer
+      const packetizerConfig: AudioPacketizerConfig = {
+        codec: audioFileConfig.codec,
+        logger: this.logger,
+        sessionId: this.config.sessionId || 'test-audio-session'
+      };
+      
+      this.audioPacketizer = new AudioPacketizer(packetizerConfig);
+      
+      // Initialize tempo adjustment if configured
+      await this.initializeTempoAdjustment();
+      
+      // Set up the stream pipeline
+      await this.setupStreamPipeline();
+      
+      this.logger.info('Stream-based audio initialized', {
+        hasTempoAdjustment: !!this.tempoAdjustTransform,
+        tempo: this.testConfig.tempoAdjustment?.tempo
+      });
       
     } catch (error) {
-      this.logger.error('Failed to initialize audio source manager', error);
+      this.logger.error('Failed to initialize stream-based audio', error);
       throw error;
     }
   }
 
-  private startContinuousRtpStream(): void {
-    if (!this.audioSourceManager) {
-      this.logger.error('Audio source manager not initialized');
+  private async setupStreamPipeline(): Promise<void> {
+    if (!this.audioFileStream || !this.audioPacketizer) {
+      throw new Error('Audio stream components not initialized');
+    }
+
+    // Set up the pipeline: AudioFileStream -> [TempoAdjustTransform] -> AudioPacketizer
+    let currentStream: NodeJS.ReadableStream = this.audioFileStream;
+    
+    if (this.tempoAdjustTransform) {
+      // Pipeline: AudioFileStream -> TempoAdjustTransform -> AudioPacketizer
+      currentStream = currentStream.pipe(this.tempoAdjustTransform);
+      this.logger.info('Stream pipeline set up with tempo adjustment', {
+        tempo: this.testConfig.tempoAdjustment?.tempo
+      });
+    } else {
+      this.logger.info('Stream pipeline set up without tempo adjustment');
+    }
+
+    // Connect to packetizer
+    currentStream.pipe(this.audioPacketizer);
+    
+    // Handle packetized audio
+    this.audioPacketizer.on('data', (packet: AudioPacket) => {
+      this.audioPacketQueue.push(packet);
+    });
+    
+    this.audioPacketizer.on('end', () => {
+      this.logger.debug('Audio packetizer stream ended');
+    });
+    
+    this.audioPacketizer.on('error', (error) => {
+      this.logger.error('Audio packetizer error', error);
+    });
+    
+    // Start the RTP scheduler
+    this.startStreamBasedRtpScheduler();
+    
+    // Start the stream flowing
+    this.audioFileStream.resume();
+    
+    // Also trigger an initial read to ensure stream starts
+    process.nextTick(() => {
+      if (this.audioFileStream) {
+        this.audioFileStream.read(0);
+      }
+    });
+  }
+
+  private startStreamBasedRtpScheduler(): void {
+    if (!this.audioFileStream) {
+      this.logger.error('Audio file stream not initialized');
       return;
     }
     
-    const totalDurationMs = this.audioSourceManager.getTotalCallDurationMs();
+    const totalDurationMs = this.audioFileStream.getTotalDurationMs();
     
-    this.logger.debug('Starting adaptive RTP stream for test audio', {
+    this.logger.debug('Starting stream-based RTP scheduler', {
       totalDurationMs,
-      totalDurationSeconds: totalDurationMs / 1000
+      totalDurationSeconds: totalDurationMs / 1000,
+      hasTempoAdjustment: !!this.tempoAdjustTransform
     });
 
     // Use adaptive buffer-depth scheduler
@@ -98,41 +207,47 @@ export class RtpTestAudioSession extends RtpSession {
       logger: this.logger,
       sessionId: this.config.sessionId || 'test-audio-session',
       onPacketSend: (packetNumber: number, callTimeMs: number) => {
-        // Get the next packet from audio source manager
-        const packet = this.audioSourceManager!.getNextPacket(callTimeMs);
+        // Get the next packet from the queue
+        const packet = this.audioPacketQueue.shift();
         
         if (packet) {
-          // Send the packet (either silence or audio)
-          this.sendAudioPacket(packet);
+          // Send the packet
+          this.sendStreamPacket(packet);
           
-          // Log phase information every 50 packets
+          // Log status every 50 packets
           if (packetNumber % 50 === 0) {
-            const phase = this.audioSourceManager!.getCallPhase(callTimeMs);
-            this.logger.debug('Adaptive RTP stream status', {
+            const phase = this.audioFileStream!.getCurrentPhase();
+            this.logger.debug('Stream-based RTP scheduler status', {
               packetNumber,
               callTimeMs,
               phase: phase.phase,
               remainingMs: phase.remaining,
+              queueLength: this.audioPacketQueue.length,
               bufferState: this.adaptiveScheduler!.getBufferState()
             });
           }
           
           return true; // Continue sending
         } else {
-          // Call should end
-          this.logger.debug('Audio source manager signaled end of call');
-          return false; // Stop sending
+          // No more packets - check if stream is done
+          if (callTimeMs >= totalDurationMs) {
+            this.logger.debug('Stream-based RTP scheduler completed - all packets sent');
+            return false; // Stop sending
+          } else {
+            // Still waiting for more packets from the stream
+            return true; // Continue sending (scheduler will handle backpressure)
+          }
         }
       },
       onComplete: async () => {
-        this.logger.debug('Adaptive RTP stream completed - hanging up');
+        this.logger.debug('Stream-based RTP scheduler completed - hanging up');
         
         // Hang up the call
         if (this.testConfig.onHangUpRequested) {
           try {
             await this.testConfig.onHangUpRequested();
           } catch (error) {
-            this.logger.error('Error hanging up call after adaptive stream completion', error);
+            this.logger.error('Error hanging up call after stream completion', error);
           }
         }
       }
@@ -141,19 +256,13 @@ export class RtpTestAudioSession extends RtpSession {
     this.adaptiveScheduler.start();
   }
 
-  private sendAudioPacket(payload: Buffer, marker: boolean = false): void {
-    // Update RTP packet fields
-    this.rtpPacket.setMarker(marker);
-    this.rtpPacket.setPayload(rtpJsUtils.nodeBufferToDataView(payload));
 
-    // Update timestamp and sequence number
-    const currentTimestamp = this.rtpPacket.getTimestamp();
-    const newTimestamp = (currentTimestamp + this.samplesPerFrame) & 0xFFFFFFFF;
-    this.rtpPacket.setTimestamp(newTimestamp);
-
-    const currentSeqNum = this.rtpPacket.getSequenceNumber();
-    const newSeqNum = (currentSeqNum + 1) & 0xFFFF;
-    this.rtpPacket.setSequenceNumber(newSeqNum);
+  private sendStreamPacket(packet: AudioPacket): void {
+    // Update RTP packet fields with stream packet data
+    this.rtpPacket.setMarker(packet.isLast);
+    this.rtpPacket.setPayload(rtpJsUtils.nodeBufferToDataView(packet.payload));
+    this.rtpPacket.setTimestamp(packet.timestamp);
+    this.rtpPacket.setSequenceNumber(packet.sequenceNumber);
 
     // Serialize and send
     const rtpView = this.rtpPacket.getView();

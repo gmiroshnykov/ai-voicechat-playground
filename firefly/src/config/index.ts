@@ -125,6 +125,26 @@ export function loadConfig(): AppConfig {
       displayToConsole: validateBooleanEnv(getOptionalEnv('TRANSCRIPTION_DISPLAY_TO_CONSOLE', 'true'))
     };
 
+    // Test audio config
+    const testAudioTempo = parseFloat(getOptionalEnv('TEST_AUDIO_TEMPO', '1.0'));
+    if (isNaN(testAudioTempo) || testAudioTempo <= 0 || testAudioTempo > 5.0) {
+      throw new ConfigurationError('TEST_AUDIO_TEMPO must be a number between 0.1 and 5.0');
+    }
+    
+    const testAudioConfig = {
+      tempoAdjustment: testAudioTempo !== 1.0 ? { tempo: testAudioTempo } : undefined
+    };
+    
+    // AI audio config
+    const aiAudioTempo = parseFloat(getOptionalEnv('AI_AUDIO_TEMPO', '1.0'));
+    if (isNaN(aiAudioTempo) || aiAudioTempo <= 0 || aiAudioTempo > 5.0) {
+      throw new ConfigurationError('AI_AUDIO_TEMPO must be a number between 0.1 and 5.0');
+    }
+    
+    const aiAudioConfig = {
+      tempoAdjustment: aiAudioTempo !== 1.0 ? { tempo: aiAudioTempo } : undefined
+    };
+
     const config: AppConfig = {
       sip: sipConfig,
       drachtio: drachtioConfig,
@@ -132,6 +152,8 @@ export function loadConfig(): AppConfig {
       openai: openaiConfig,
       recording: recordingConfig,
       transcription: transcriptionConfig,
+      testAudio: testAudioConfig,
+      aiAudio: aiAudioConfig,
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

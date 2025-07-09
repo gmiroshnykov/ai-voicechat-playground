@@ -3,23 +3,28 @@ import { spawn, ChildProcess } from 'child_process';
 import { createLogger, Logger } from '../utils/logger';
 import { CodecInfo } from './types';
 
-export interface SpeedAdjustTransformConfig {
-  speedRatio: number; // 1.0 = normal speed, 1.1 = 10% faster, 0.9 = 10% slower
+export interface TempoAdjustTransformConfig {
+  tempo: number; // 1.0 = normal speed, 1.2 = 20% faster, 0.8 = 20% slower
   codecInfo: CodecInfo;
   sessionId: string;
 }
 
 /**
- * Transform stream that adjusts audio playback speed using FFmpeg
+ * Transform stream that adjusts audio tempo using FFmpeg
  * Uses the atempo filter to change tempo without changing pitch
+ * 
+ * IMPORTANT: This should only be used with buffered audio streams,
+ * NOT with real-time audio as it introduces processing latency.
+ * Perfect for pre-recorded audio or AI responses that come in bursts.
  */
-export class SpeedAdjustTransform extends Transform {
-  private readonly config: SpeedAdjustTransformConfig;
+export class TempoAdjustTransform extends Transform {
+  private readonly config: TempoAdjustTransformConfig;
   private readonly logger: Logger;
   private ffmpegProcess?: ChildProcess;
   private isDestroyed = false;
+  private killTimeout?: NodeJS.Timeout;
 
-  constructor(config: SpeedAdjustTransformConfig) {
+  constructor(config: TempoAdjustTransformConfig) {
     super({ 
       objectMode: false,
       highWaterMark: 64 * 1024 // 64KB buffer
@@ -27,12 +32,12 @@ export class SpeedAdjustTransform extends Transform {
     
     this.config = config;
     this.logger = createLogger({ 
-      component: 'SpeedAdjustTransform',
+      component: 'TempoAdjustTransform',
       sessionId: config.sessionId
     });
     
-    this.logger.debug('SpeedAdjustTransform initialized', {
-      speedRatio: config.speedRatio,
+    this.logger.debug('TempoAdjustTransform initialized', {
+      tempo: config.tempo,
       codec: config.codecInfo.name
     });
   }
@@ -52,20 +57,28 @@ export class SpeedAdjustTransform extends Transform {
       // Write chunk to FFmpeg stdin
       if (this.ffmpegProcess && this.ffmpegProcess.stdin && !this.ffmpegProcess.stdin.destroyed) {
         this.ffmpegProcess.stdin.write(chunk);
+      } else {
+        // Pass through unchanged if FFmpeg not available
+        this.push(chunk);
       }
 
       callback();
     } catch (error) {
-      this.logger.error('Error in speed adjust transform', error);
+      this.logger.error('Error in tempo adjust transform', error);
       callback(error as Error);
     }
   }
 
   _flush(callback: (error?: Error | null) => void): void {
     if (this.ffmpegProcess && this.ffmpegProcess.stdin && !this.ffmpegProcess.stdin.destroyed) {
+      // Wait for FFmpeg to finish processing after closing stdin
+      this.ffmpegProcess.on('exit', () => {
+        callback();
+      });
       this.ffmpegProcess.stdin.end();
+    } else {
+      callback();
     }
-    callback();
   }
 
   private initializeFFmpeg(): void {
@@ -79,13 +92,13 @@ export class SpeedAdjustTransform extends Transform {
     // Determine input format based on codec
     const inputFormat = this.getInputFormat();
     
-    // FFmpeg command to adjust speed
+    // FFmpeg command to adjust tempo
     const ffmpegArgs = [
       '-f', inputFormat,
       '-ar', sampleRate.toString(),
       '-ac', channels.toString(),
       '-i', 'pipe:0', // Input from stdin
-      '-filter:a', `atempo=${this.config.speedRatio}`, // Speed adjustment
+      '-filter:a', `atempo=${this.config.tempo}`, // Tempo adjustment
       '-f', inputFormat,
       '-ar', sampleRate.toString(),
       '-ac', channels.toString(),
@@ -94,7 +107,7 @@ export class SpeedAdjustTransform extends Transform {
 
     this.logger.debug('Starting FFmpeg process', {
       args: ffmpegArgs,
-      speedRatio: this.config.speedRatio
+      tempo: this.config.tempo
     });
 
     this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
@@ -157,6 +170,12 @@ export class SpeedAdjustTransform extends Transform {
 
     this.isDestroyed = true;
     
+    // Clear any pending kill timeout
+    if (this.killTimeout) {
+      clearTimeout(this.killTimeout);
+      this.killTimeout = undefined;
+    }
+    
     if (this.ffmpegProcess) {
       this.logger.debug('Terminating FFmpeg process');
       
@@ -165,12 +184,15 @@ export class SpeedAdjustTransform extends Transform {
         this.ffmpegProcess.stdin.end();
       }
       
-      // Kill the process after a timeout
-      setTimeout(() => {
+      // Kill the process after a short timeout, but don't keep event loop alive
+      this.killTimeout = setTimeout(() => {
         if (this.ffmpegProcess && !this.ffmpegProcess.killed) {
           this.ffmpegProcess.kill('SIGTERM');
         }
-      }, 1000);
+      }, 100);
+      
+      // Don't keep the event loop alive for this timeout
+      this.killTimeout.unref();
     }
 
     return super.destroy(error);

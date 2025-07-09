@@ -1,5 +1,7 @@
 // import { pipeline } from 'stream';
 // import { promisify } from 'util';
+import * as dgram from 'dgram';
+import { packets as rtpJsPackets, utils as rtpJsUtils } from 'rtp.js';
 import { RealtimeAgent, RealtimeSession, tool } from '@openai/agents/realtime';
 import { RtpSession } from './RtpSession';
 import { RtcpHandler } from './RtcpHandler';
@@ -8,7 +10,7 @@ import { AudioToRtpStream, AudioToRtpStreamConfig } from './AudioToRtpStream';
 import { JitterBufferTransform, JitterBufferTransformConfig } from './JitterBufferTransform';
 import { StereoRecorderStream } from './StereoRecorderStream';
 import { ChannelRecorderStream } from './ChannelRecorderStream';
-import { SpeedAdjustTransform, SpeedAdjustTransformConfig } from './SpeedAdjustTransform';
+import { TempoAdjustTransform, TempoAdjustTransformConfig } from './TempoAdjustTransform';
 import { createTee, createPassThrough } from './StreamUtils';
 import { RtpSessionConfig, CodecType } from './types';
 import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, RecordingConfig, TranscriptionConfig } from '../config/types';
@@ -29,9 +31,8 @@ export interface RtpBridgeSessionStreamConfig extends RtpSessionConfig {
     diversionHeader?: string;
   };
   onHangUpRequested?: () => Promise<void>;
-  speedAdjustment?: {
-    enabled: boolean;
-    speedRatio: number; // 1.0 = normal, 1.1 = 10% faster
+  aiTempoAdjustment?: {
+    tempo: number; // 1.0 = normal speed, 1.2 = 20% faster
   };
 }
 
@@ -56,11 +57,14 @@ export class RtpBridgeSessionStream extends RtpSession {
   private stereoRecorderStream?: StereoRecorderStream;
   private callerRecorderStream?: ChannelRecorderStream;
   private aiRecorderStream?: ChannelRecorderStream;
-  private speedAdjustTransform?: SpeedAdjustTransform;
+  private tempoAdjustTransform?: TempoAdjustTransform;
   
   // Continuous RTP streaming for outbound audio
   private continuousScheduler?: RtpContinuousScheduler;
   private openaiAudioSourceManager?: OpenAIAudioSourceManager;
+  
+  // AI audio processing pipeline
+  private aiAudioProcessingStream?: NodeJS.WritableStream;
   
   // Transcription management
   private transcriptionManager?: TranscriptionManager;
@@ -103,8 +107,14 @@ export class RtpBridgeSessionStream extends RtpSession {
       await this.initializeTranscriptionManager();
     }
 
+    // Initialize AI tempo adjustment transform if enabled
+    await this.initializeTempoAdjustment();
+    
     // Initialize OpenAI audio source manager for outbound audio
     await this.initializeOpenAIAudioSourceManager();
+    
+    // Set up AI audio processing pipeline
+    await this.setupAIAudioProcessingPipeline();
     
     // Start continuous RTP streaming for outbound audio
     this.startContinuousRtpStream();
@@ -112,8 +122,18 @@ export class RtpBridgeSessionStream extends RtpSession {
     // Set up the stream pipeline for inbound audio processing
     await this.setupStreamPipeline();
 
+    // Set up direct RTP packet handling for incoming audio (like working sessions)
+    this.rtpSocket!.on('message', this.handleIncomingRtp.bind(this));
+
     // Initialize OpenAI Realtime connection (this takes time)
-    await this.initializeOpenAIConnection();
+    try {
+      await this.initializeOpenAIConnection();
+    } catch (error) {
+      // If OpenAI connection fails, stop the continuous RTP stream to prevent resource leaks
+      this.logger.error('Failed to connect to OpenAI, stopping session', error);
+      await this.onStop();
+      throw error;
+    }
   }
 
   protected async onStop(): Promise<void> {
@@ -121,6 +141,15 @@ export class RtpBridgeSessionStream extends RtpSession {
     if (this.continuousScheduler) {
       this.continuousScheduler.stop();
       this.continuousScheduler = undefined;
+    }
+    
+    // Clean up AI audio processing pipeline
+    if (this.aiAudioProcessingStream) {
+      if (this.aiAudioProcessingStream !== this.tempoAdjustTransform) {
+        // It's a direct writable stream, destroy it
+        (this.aiAudioProcessingStream as any).destroy?.();
+      }
+      this.aiAudioProcessingStream = undefined;
     }
     
     // Clean up OpenAI audio source manager
@@ -136,9 +165,9 @@ export class RtpBridgeSessionStream extends RtpSession {
     }
     
     // Destroy stream components
-    if (this.speedAdjustTransform) {
-      this.speedAdjustTransform.destroy();
-      this.speedAdjustTransform = undefined;
+    if (this.tempoAdjustTransform) {
+      this.tempoAdjustTransform.destroy();
+      this.tempoAdjustTransform = undefined;
     }
     
     if (this.jitterBufferTransform) {
@@ -230,15 +259,6 @@ export class RtpBridgeSessionStream extends RtpSession {
     };
     this.audioToRtpStream = new AudioToRtpStream(audioToRtpConfig);
 
-    // Create speed adjustment transform if enabled
-    if (this.bridgeConfig.speedAdjustment?.enabled) {
-      const speedAdjustConfig: SpeedAdjustTransformConfig = {
-        speedRatio: this.bridgeConfig.speedAdjustment.speedRatio,
-        codecInfo: this.config.codec,
-        sessionId: this.config.sessionId || 'stream-bridge-session'
-      };
-      this.speedAdjustTransform = new SpeedAdjustTransform(speedAdjustConfig);
-    }
 
     // Set up the pipeline
     await this.connectStreamPipeline();
@@ -253,10 +273,6 @@ export class RtpBridgeSessionStream extends RtpSession {
     let currentStream: NodeJS.ReadWriteStream = this.rtpToAudioStream
       .pipe(this.jitterBufferTransform); // RtpPacketInfo -> Buffer
 
-    // Add speed adjustment if enabled
-    if (this.speedAdjustTransform) {
-      currentStream = currentStream.pipe(this.speedAdjustTransform);
-    }
 
     // Fork for caller recording if enabled
     if (this.callerRecorderStream) {
@@ -275,7 +291,6 @@ export class RtpBridgeSessionStream extends RtpSession {
     });
 
     this.logger.info('Stream pipeline connected successfully', {
-      hasSpeedAdjustment: !!this.speedAdjustTransform,
       hasRecording: !!this.callerRecorderStream,
       jitterBufferMs: this.bridgeConfig.jitterBufferMs ?? 60
     });
@@ -319,6 +334,63 @@ export class RtpBridgeSessionStream extends RtpSession {
         // Handle transcript updates if needed
       }
     });
+  }
+
+  private async initializeTempoAdjustment(): Promise<void> {
+    const tempo = this.bridgeConfig.aiTempoAdjustment?.tempo;
+    if (!tempo || tempo === 1.0) {
+      return; // No adjustment needed
+    }
+
+    const tempoAdjustConfig: TempoAdjustTransformConfig = {
+      tempo: tempo,
+      codecInfo: this.config.codec,
+      sessionId: this.config.sessionId || 'stream-bridge-session'
+    };
+    
+    this.tempoAdjustTransform = new TempoAdjustTransform(tempoAdjustConfig);
+    
+    this.logger.info('AI tempo adjustment transform initialized', {
+      tempo: tempo,
+      codec: this.config.codec.name
+    });
+  }
+
+  private async setupAIAudioProcessingPipeline(): Promise<void> {
+    if (!this.openaiAudioSourceManager) {
+      throw new Error('OpenAI audio source manager must be initialized first');
+    }
+
+    // Create a writable stream that feeds processed audio to the OpenAI audio source manager
+    const { Writable } = await import('stream');
+    
+    if (this.tempoAdjustTransform) {
+      // Pipeline: Input -> TempoAdjustTransform -> OpenAI Audio Source Manager
+      this.aiAudioProcessingStream = this.tempoAdjustTransform;
+      
+      // Connect tempo adjustment output to OpenAI audio source manager
+      this.tempoAdjustTransform.on('data', (processedAudio: Buffer) => {
+        if (this.openaiAudioSourceManager) {
+          this.openaiAudioSourceManager.addOpenAIAudio(processedAudio);
+        }
+      });
+      
+      this.logger.info('AI audio processing pipeline set up with tempo adjustment', {
+        tempo: this.bridgeConfig.aiTempoAdjustment?.tempo
+      });
+    } else {
+      // Direct pipeline: Input -> OpenAI Audio Source Manager
+      this.aiAudioProcessingStream = new Writable({
+        write: (chunk: Buffer, _encoding, callback) => {
+          if (this.openaiAudioSourceManager) {
+            this.openaiAudioSourceManager.addOpenAIAudio(chunk);
+          }
+          callback();
+        }
+      });
+      
+      this.logger.info('AI audio processing pipeline set up without tempo adjustment');
+    }
   }
 
   private async initializeOpenAIAudioSourceManager(): Promise<void> {
@@ -442,13 +514,33 @@ export class RtpBridgeSessionStream extends RtpSession {
         voice: 'alloy'
       });
 
-      this.realtimeSession = await (this.realtimeAgent as any).connect({ 
-        apiKey: this.bridgeConfig.openaiApiKey,
-        input_audio_format: this.config.codec.name === CodecType.PCMA ? 'g711_alaw' : 'g711_ulaw',
-        output_audio_format: this.config.codec.name === CodecType.PCMA ? 'g711_alaw' : 'g711_ulaw',
-      });
+      const audioFormat = this.config.codec.name === CodecType.PCMA ? 'g711_alaw' : 'g711_ulaw';
       
+      // Configure transcription if enabled
+      const sessionConfig: any = {
+        inputAudioFormat: audioFormat,
+        outputAudioFormat: audioFormat
+      };
+      
+      if (this.bridgeConfig.transcriptionConfig?.enabled) {
+        sessionConfig.inputAudioTranscription = {
+          model: this.bridgeConfig.transcriptionConfig.model,
+        };
+      }
+      
+      this.realtimeSession = new RealtimeSession(this.realtimeAgent, {
+        model: 'gpt-4o-realtime-preview-2025-06-03',
+        transport: 'websocket',
+        config: sessionConfig
+      });
+
+      // Set up event handlers
       this.setupOpenAIEventHandlers();
+
+      // Connect to OpenAI
+      await this.realtimeSession.connect({ 
+        apiKey: this.bridgeConfig.openaiApiKey
+      });
       
       this.isConnectedToOpenAI = true;
       this.logger.info('Connected to OpenAI Realtime API');
@@ -508,9 +600,10 @@ export class RtpBridgeSessionStream extends RtpSession {
 
   private handleOpenAIAudio(event: any): void {
     try {
-      if (event.delta && this.openaiAudioSourceManager) {
+      if (event.delta && this.aiAudioProcessingStream) {
         const audioBuffer = Buffer.from(event.delta, 'base64');
-        this.openaiAudioSourceManager.addOpenAIAudio(audioBuffer);
+        // Send audio through the processing pipeline (with or without speed adjustment)
+        this.aiAudioProcessingStream.write(audioBuffer);
       }
     } catch (error) {
       this.logger.error('Error handling OpenAI audio', error);
@@ -540,6 +633,96 @@ export class RtpBridgeSessionStream extends RtpSession {
       }
     } catch (error) {
       this.logger.error('Error handling AI transcript done', error);
+    }
+  }
+
+  private handleIncomingRtp(msg: Buffer, rinfo: dgram.RemoteInfo): void {
+    // Validate source and check if active
+    if (this.state !== 'active') {
+      return;
+    }
+
+    if (!this.validateRtpSource(rinfo.address)) {
+      this.logger.warn('Rejected RTP from untrusted source', {
+        source: `${rinfo.address}:${rinfo.port}`,
+        expected: this.latchingState.expectedRemoteAddress
+      });
+      return;
+    }
+
+    // Update statistics
+    this.updateRtpStats(msg.length, 'received');
+
+    // Perform symmetric RTP latching
+    if (!this.latchingState.rtpLatched || 
+        this.config.remoteAddress !== rinfo.address || 
+        this.config.remotePort !== rinfo.port) {
+      
+      this.logger.debug('RTP latching to source', {
+        address: rinfo.address,
+        port: rinfo.port,
+        wasExpecting: `${this.config.remoteAddress}:${this.config.remotePort}`
+      });
+
+      // Update config with actual source
+      this.config.remoteAddress = rinfo.address;
+      this.config.remotePort = rinfo.port;
+      this.latchingState.rtpLatched = true;
+      this.latchingState.actualRtpEndpoint = {
+        address: rinfo.address,
+        port: rinfo.port
+      };
+    }
+
+    // Parse and process RTP packet
+    try {
+      const rtpView = rtpJsUtils.nodeBufferToDataView(msg);
+      
+      // Check if it's a valid RTP packet - be more permissive for interoperability
+      if (!rtpJsPackets.isRtp(rtpView)) {
+        // Log details for debugging but continue if packet looks like RTP
+        const firstByte = msg.length > 0 ? msg[0]! : 0;
+        const rtpVersion = (firstByte >> 6) & 0x3;
+        
+        this.logger.debug('RTP validation failed, checking manually', {
+          packetLength: msg.length,
+          firstByte: firstByte?.toString(16) || '0',
+          rtpVersion,
+          expectedVersion: 2
+        });
+        
+        // Accept packets that have reasonable length (be permissive with version)
+        if (msg.length < 12) {
+          this.logger.warn('Received too short packet on RTP port', {
+            packetLength: msg.length,
+            rtpVersion
+          });
+          return;
+        }
+        
+        // Log version mismatches but continue processing
+        if (rtpVersion !== 2) {
+          this.logger.debug('RTP version mismatch, continuing anyway', {
+            rtpVersion,
+            expectedVersion: 2
+          });
+        }
+      }
+
+      // Parse incoming packet
+      const incomingPacket = new rtpJsPackets.RtpPacket(rtpView);
+      
+      // Extract G.711 payload
+      const payloadView = incomingPacket.getPayload();
+      const payloadBuffer = rtpJsUtils.dataViewToNodeBuffer(payloadView);
+
+      // Forward directly to OpenAI if connected
+      if (this.isConnectedToOpenAI && this.realtimeSession) {
+        this.forwardToOpenAI(payloadBuffer);
+      }
+
+    } catch (error) {
+      this.logger.warn('Error processing RTP packet', { error });
     }
   }
 

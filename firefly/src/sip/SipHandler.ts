@@ -93,6 +93,10 @@ export class SipHandler {
         openaiConfig: this.config.openai,
         recordingConfig: this.config.recording,
         transcriptionConfig: this.config.transcription,
+        testAudioConfig: this.config.testAudio,
+        streamConfig: {
+          aiTempoAdjustment: this.config.aiAudio.tempoAdjustment
+        },
         caller: {
           phoneNumber: this.extractPhoneNumber(callContext.from),
           diversionHeader: callContext.diversion

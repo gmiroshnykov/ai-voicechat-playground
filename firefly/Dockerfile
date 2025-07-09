@@ -3,6 +3,7 @@ FROM node:20-slim AS base
 # Install system dependencies for audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory

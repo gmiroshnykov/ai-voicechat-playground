@@ -1,6 +1,5 @@
 import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
-import { RtpBridgeSession, RtpBridgeSessionConfig } from './RtpBridgeSession';
 import { RtpBridgeSessionStream, RtpBridgeSessionStreamConfig } from './RtpBridgeSessionStream';
 import { RtpTestAudioSession, RtpTestAudioSessionConfig } from './RtpTestAudioSession';
 import { RtpSessionConfig, CodecInfo } from './types';
@@ -25,9 +24,14 @@ export interface CreateSessionOptions {
   onHangUpRequested?: () => Promise<void>;
   // Stream-based bridge specific options
   streamConfig?: {
-    speedAdjustment?: {
-      enabled: boolean;
-      speedRatio: number;
+    aiTempoAdjustment?: {
+      tempo: number; // 1.0 = normal speed, 1.2 = 20% faster
+    };
+  };
+  // Test audio specific options
+  testAudioConfig?: {
+    tempoAdjustment?: {
+      tempo: number; // 1.0 = normal speed, 1.2 = 20% faster
     };
   };
 }
@@ -87,31 +91,7 @@ export class RtpManager {
             });
           }
           
-          const bridgeConfig: RtpBridgeSessionConfig = {
-            ...sessionConfig,
-            openaiApiKey: options.openaiConfig.apiKey,
-            jitterBufferMs: this.rtpConfig.jitterBufferMs,
-            recordingConfig: options.recordingConfig,
-            transcriptionConfig: options.transcriptionConfig,
-            caller: options.caller,
-            onHangUpRequested: options.onHangUpRequested
-          };
-          session = new RtpBridgeSession(bridgeConfig);
-          break;
-          
-        case 'bridge_stream':
-          if (!options.openaiConfig || !options.openaiConfig.enabled) {
-            throw new RtpSessionError('Bridge stream session requires OpenAI configuration', { 
-              sessionId: options.sessionId 
-            });
-          }
-          if (!options.openaiConfig.apiKey) {
-            throw new RtpSessionError('Bridge stream session requires OpenAI API key', { 
-              sessionId: options.sessionId 
-            });
-          }
-          
-          const bridgeStreamConfig: RtpBridgeSessionStreamConfig = {
+          const bridgeConfig: RtpBridgeSessionStreamConfig = {
             ...sessionConfig,
             openaiApiKey: options.openaiConfig.apiKey,
             jitterBufferMs: this.rtpConfig.jitterBufferMs,
@@ -119,15 +99,16 @@ export class RtpManager {
             transcriptionConfig: options.transcriptionConfig,
             caller: options.caller,
             onHangUpRequested: options.onHangUpRequested,
-            speedAdjustment: options.streamConfig?.speedAdjustment
+            aiTempoAdjustment: options.streamConfig?.aiTempoAdjustment
           };
-          session = new RtpBridgeSessionStream(bridgeStreamConfig);
+          session = new RtpBridgeSessionStream(bridgeConfig);
           break;
           
         case 'test_audio':
           const testAudioConfig: RtpTestAudioSessionConfig = {
             ...sessionConfig,
-            onHangUpRequested: options.onHangUpRequested
+            onHangUpRequested: options.onHangUpRequested,
+            tempoAdjustment: options.testAudioConfig?.tempoAdjustment
           };
           session = new RtpTestAudioSession(testAudioConfig);
           break;

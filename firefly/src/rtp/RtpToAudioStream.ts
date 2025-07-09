@@ -37,8 +37,8 @@ export class RtpToAudioStream extends Readable {
 
   constructor(config: RtpToAudioStreamConfig) {
     super({ 
-      objectMode: false, // We're pushing audio Buffer objects
-      highWaterMark: 64 * 1024 // 64KB buffer
+      objectMode: true, // We're pushing RTP packet info objects
+      highWaterMark: 64 // 64 objects buffer
     });
     
     this.config = config;
@@ -140,13 +140,21 @@ export class RtpToAudioStream extends Readable {
           expectedVersion: 2
         });
         
-        // Accept packets that at least have RTP version 2 and reasonable length
-        if (msg.length < 12 || rtpVersion !== 2) {
-          this.logger.warn('Received non-RTP packet on RTP port', {
+        // Accept packets that have reasonable length (be permissive with version for interoperability)
+        if (msg.length < 12) {
+          this.logger.warn('Received too short packet on RTP port', {
             packetLength: msg.length,
             rtpVersion
           });
           return;
+        }
+        
+        // Log version mismatches but continue processing
+        if (rtpVersion !== 2) {
+          this.logger.debug('RTP version mismatch, continuing anyway', {
+            rtpVersion,
+            expectedVersion: 2
+          });
         }
         
         this.logger.debug('Accepting packet despite RTP.js validation failure');

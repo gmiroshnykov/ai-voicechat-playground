@@ -67,6 +67,10 @@ services:
       - TRANSCRIPTION_MODEL=${TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
       - TRANSCRIPTION_DISPLAY_TO_CONSOLE=${TRANSCRIPTION_DISPLAY_TO_CONSOLE:-true}
 
+      # Audio configuration
+      - TEST_AUDIO_TEMPO=${TEST_AUDIO_TEMPO:-1.0}
+      - AI_AUDIO_TEMPO=${AI_AUDIO_TEMPO:-1.0}
+
       # Application configuration
       - NODE_ENV=${NODE_ENV:-development}
       - LOG_LEVEL=debug
