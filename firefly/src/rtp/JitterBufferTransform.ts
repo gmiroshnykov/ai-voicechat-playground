@@ -103,6 +103,8 @@ export class JitterBufferTransform extends Transform {
     
     this.stats.packetsReceived++;
     
+    // Debug logging disabled for testing
+    
     // Check for duplicates
     if (this.recentSeqNums.has(seqNum)) {
       this.stats.packetsDuplicate++;
@@ -141,6 +143,7 @@ export class JitterBufferTransform extends Transform {
 
   private processPacketImmediate(packet: RtpPacketInfo): void {
     // Fast path: process immediately without buffering
+    // Debug logging disabled for testing
     this.expectedSeqNum = packet.sequenceNumber;
     this.outputPacket(packet);
   }
@@ -268,11 +271,7 @@ export class JitterBufferTransform extends Transform {
     // Push the audio payload to the stream
     this.push(packet.payload);
     
-    this.logger.trace('Output packet from jitter buffer', {
-      sequenceNumber: packet.sequenceNumber,
-      timestamp: packet.timestamp,
-      payloadSize: packet.payload.length
-    });
+    // Debug logging disabled for testing
   }
 
   public flush(): void {

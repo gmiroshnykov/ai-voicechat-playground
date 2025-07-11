@@ -1,31 +1,29 @@
 // import { pipeline } from 'stream';
 // import { promisify } from 'util';
-import * as dgram from 'dgram';
-import { packets as rtpJsPackets, utils as rtpJsUtils } from 'rtp.js';
 import { RealtimeAgent, RealtimeSession, tool } from '@openai/agents/realtime';
 import { RtpSession } from './RtpSession';
 import { RtcpHandler } from './RtcpHandler';
 import { RtpToAudioStream, RtpToAudioStreamConfig } from './RtpToAudioStream';
 import { AudioToRtpStream, AudioToRtpStreamConfig } from './AudioToRtpStream';
 import { JitterBufferTransform, JitterBufferTransformConfig } from './JitterBufferTransform';
-import { StereoRecorderStream } from './StereoRecorderStream';
-import { ChannelRecorderStream } from './ChannelRecorderStream';
 import { TempoAdjustTransform, TempoAdjustTransformConfig } from './TempoAdjustTransform';
-import { createTee, createPassThrough } from './StreamUtils';
+import { createPassThrough } from './StreamUtils';
 import { RtpSessionConfig, CodecType } from './types';
-import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, RecordingConfig, TranscriptionConfig } from '../config/types';
+import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, TranscriptionConfig, RecordingConfig } from '../config/types';
 import { TranscriptionManager, TranscriptEntry } from './TranscriptionManager';
-import { CallRecorderConfig } from './CallRecorder';
 import { RtpContinuousScheduler, RtpContinuousSchedulerConfig } from './RtpContinuousScheduler';
 import { OpenAIAudioSourceManager, OpenAIAudioSourceManagerConfig } from './OpenAIAudioSourceManager';
+import { ChannelRecorderStream, ChannelRecorderStreamConfig } from './ChannelRecorderStream';
+import { StereoRecorderStream, StereoRecorderStreamConfig } from './StereoRecorderStream';
+import { TeeStream } from './StreamUtils';
 
 // const pipelineAsync = promisify(pipeline);
 
 export interface RtpBridgeSessionStreamConfig extends RtpSessionConfig {
   openaiApiKey: string;
   jitterBufferMs?: number; // Default: 40ms
-  recordingConfig?: RecordingConfig;
   transcriptionConfig?: TranscriptionConfig;
+  recordingConfig?: RecordingConfig;
   caller?: {
     phoneNumber?: string;
     diversionHeader?: string;
@@ -54,9 +52,6 @@ export class RtpBridgeSessionStream extends RtpSession {
   private rtpToAudioStream?: RtpToAudioStream;
   private audioToRtpStream?: AudioToRtpStream;
   private jitterBufferTransform?: JitterBufferTransform;
-  private stereoRecorderStream?: StereoRecorderStream;
-  private callerRecorderStream?: ChannelRecorderStream;
-  private aiRecorderStream?: ChannelRecorderStream;
   private tempoAdjustTransform?: TempoAdjustTransform;
   
   // Continuous RTP streaming for outbound audio
@@ -68,6 +63,14 @@ export class RtpBridgeSessionStream extends RtpSession {
   
   // Transcription management
   private transcriptionManager?: TranscriptionManager;
+  
+  // Recording streams
+  private inboundRecorder?: ChannelRecorderStream;
+  private outboundRecorder?: ChannelRecorderStream;
+  private stereoRecorder?: StereoRecorderStream;
+  private inboundTeeStream?: TeeStream;
+  private outboundTeeStream?: TeeStream;
+  private callDirectory?: string;
 
   constructor(sessionConfig: RtpBridgeSessionStreamConfig) {
     super(sessionConfig);
@@ -97,14 +100,15 @@ export class RtpBridgeSessionStream extends RtpSession {
     });
     this.rtcpHandler.start();
 
-    // Initialize call recording first if enabled
-    if (this.bridgeConfig.recordingConfig?.enabled) {
-      await this.initializeCallRecording();
-    }
 
     // Initialize transcription manager
     if (this.bridgeConfig.transcriptionConfig?.enabled) {
       await this.initializeTranscriptionManager();
+    }
+    
+    // Initialize recording streams
+    if (this.bridgeConfig.recordingConfig?.enabled) {
+      await this.initializeRecordingStreams();
     }
 
     // Initialize AI tempo adjustment transform if enabled
@@ -122,14 +126,13 @@ export class RtpBridgeSessionStream extends RtpSession {
     // Set up the stream pipeline for inbound audio processing
     await this.setupStreamPipeline();
 
-    // Set up direct RTP packet handling for incoming audio (like working sessions)
-    this.rtpSocket!.on('message', this.handleIncomingRtp.bind(this));
+    // Single RTP processing path through stream pipeline - no duplicate handlers
 
     // Initialize OpenAI Realtime connection (this takes time)
     try {
       await this.initializeOpenAIConnection();
     } catch (error) {
-      // If OpenAI connection fails, stop the continuous RTP stream to prevent resource leaks
+      // If OpenAI connection fails, stop the session
       this.logger.error('Failed to connect to OpenAI, stopping session', error);
       await this.onStop();
       throw error;
@@ -175,20 +178,6 @@ export class RtpBridgeSessionStream extends RtpSession {
       this.jitterBufferTransform = undefined;
     }
     
-    if (this.stereoRecorderStream) {
-      await this.stereoRecorderStream.stop();
-      this.stereoRecorderStream = undefined;
-    }
-    
-    if (this.callerRecorderStream) {
-      this.callerRecorderStream.destroy();
-      this.callerRecorderStream = undefined;
-    }
-    
-    if (this.aiRecorderStream) {
-      this.aiRecorderStream.destroy();
-      this.aiRecorderStream = undefined;
-    }
     
     if (this.rtpToAudioStream) {
       this.rtpToAudioStream.destroy();
@@ -205,6 +194,9 @@ export class RtpBridgeSessionStream extends RtpSession {
       this.transcriptionManager.clear();
       this.transcriptionManager = undefined;
     }
+    
+    // Clean up recording streams
+    await this.cleanupRecordingStreams();
 
     // Disconnect from OpenAI
     await this.disconnectFromOpenAI();
@@ -273,17 +265,34 @@ export class RtpBridgeSessionStream extends RtpSession {
     let currentStream: NodeJS.ReadWriteStream = this.rtpToAudioStream
       .pipe(this.jitterBufferTransform); // RtpPacketInfo -> Buffer
 
-
-    // Fork for caller recording if enabled
-    if (this.callerRecorderStream) {
-      const tee = createTee([this.callerRecorderStream]);
-      currentStream = currentStream.pipe(tee);
+    // If recording is enabled, set up inbound recording tee
+    if (this.bridgeConfig.recordingConfig?.enabled && this.inboundTeeStream) {
+      currentStream = currentStream.pipe(this.inboundTeeStream);
+      
+      // Connect recording outputs to the tee stream
+      if (this.inboundRecorder) {
+        this.inboundTeeStream.addOutput(this.inboundRecorder);
+      }
+      
+      if (this.stereoRecorder) {
+        // Create a transform stream to add channel information for stereo recorder
+        const { Transform } = await import('stream');
+        const stereoInboundTransform = new Transform({
+          objectMode: true,
+          transform: (chunk: Buffer, _encoding, callback) => {
+            this.stereoRecorder!.writeInboundAudio(chunk);
+            callback();
+          }
+        });
+        this.inboundTeeStream.addOutput(stereoInboundTransform);
+      }
     }
 
-    // Fork for OpenAI processing
+    // Create OpenAI forwarding stream (never blocked)
     const openaiStream = createPassThrough();
-    const finalTee = createTee([openaiStream]);
-    currentStream.pipe(finalTee);
+    
+    // Main flow: direct pipe to OpenAI (never blocked)
+    currentStream.pipe(openaiStream);
 
     // Handle OpenAI stream
     openaiStream.on('data', (audioBuffer: Buffer) => {
@@ -291,36 +300,11 @@ export class RtpBridgeSessionStream extends RtpSession {
     });
 
     this.logger.debug('Stream pipeline connected successfully', {
-      hasRecording: !!this.callerRecorderStream,
-      jitterBufferMs: this.bridgeConfig.jitterBufferMs ?? 60
+      jitterBufferMs: this.bridgeConfig.jitterBufferMs ?? 60,
+      recordingEnabled: this.bridgeConfig.recordingConfig?.enabled || false
     });
   }
 
-  private async initializeCallRecording(): Promise<void> {
-    if (!this.bridgeConfig.recordingConfig?.enabled) {
-      return;
-    }
-
-    const callRecorderConfig: CallRecorderConfig = {
-      enabled: true,
-      recordingsPath: this.bridgeConfig.recordingConfig.recordingsPath,
-      callId: this.config.sessionId || 'stream-bridge-session',
-      caller: {
-        phoneNumber: this.bridgeConfig.caller?.phoneNumber,
-        sipUri: this.bridgeConfig.caller?.phoneNumber || 'unknown@unknown'
-      },
-      diversion: this.bridgeConfig.caller?.diversionHeader,
-      codec: this.config.codec
-    };
-
-    // Create stereo recorder and channel-specific streams
-    this.stereoRecorderStream = new StereoRecorderStream(callRecorderConfig);
-    await this.stereoRecorderStream.start();
-    
-    // Create channel-specific recorder streams
-    this.callerRecorderStream = new ChannelRecorderStream(this.stereoRecorderStream, 'caller');
-    this.aiRecorderStream = new ChannelRecorderStream(this.stereoRecorderStream, 'ai');
-  }
 
   private async initializeTranscriptionManager(): Promise<void> {
     if (!this.bridgeConfig.transcriptionConfig?.enabled) {
@@ -334,6 +318,238 @@ export class RtpBridgeSessionStream extends RtpSession {
         // Handle transcript updates if needed
       }
     });
+  }
+
+  private async initializeRecordingStreams(): Promise<void> {
+    if (!this.bridgeConfig.recordingConfig?.enabled) {
+      return;
+    }
+
+    const recordingConfig = this.bridgeConfig.recordingConfig;
+    const sessionId = this.config.sessionId || 'stream-bridge-session';
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    // Create call directory structure
+    const callDirectoryName = `${recordingConfig.filenamePrefix || 'call'}_${sessionId}_${timestamp}`;
+    const callDirectory = `${recordingConfig.directory}/${callDirectoryName}`;
+    
+    try {
+      // Create the call directory
+      const { mkdir } = await import('fs/promises');
+      await mkdir(callDirectory, { recursive: true });
+      
+      // Initialize mono channel recorders
+      if (recordingConfig.channelMode === 'mono' || recordingConfig.channelMode === 'both') {
+        const inboundConfig: ChannelRecorderStreamConfig = {
+          filePath: `${callDirectory}/inbound.${recordingConfig.format}`,
+          codec: this.config.codec,
+          sessionId,
+          channelName: 'inbound',
+          logger: this.logger
+        };
+        
+        const outboundConfig: ChannelRecorderStreamConfig = {
+          filePath: `${callDirectory}/outbound.${recordingConfig.format}`,
+          codec: this.config.codec,
+          sessionId,
+          channelName: 'outbound',
+          logger: this.logger
+        };
+        
+        this.inboundRecorder = new ChannelRecorderStream(inboundConfig);
+        this.outboundRecorder = new ChannelRecorderStream(outboundConfig);
+        
+        this.logger.info('Initialized mono channel recording streams', {
+          callDirectory,
+          sessionId
+        });
+      }
+      
+      // Initialize stereo recorder if needed
+      if (recordingConfig.channelMode === 'stereo' || recordingConfig.channelMode === 'both') {
+        const stereoConfig: StereoRecorderStreamConfig = {
+          filePath: `${callDirectory}/stereo.${recordingConfig.format}`,
+          codec: this.config.codec,
+          sessionId,
+          logger: this.logger
+        };
+        
+        this.stereoRecorder = new StereoRecorderStream(stereoConfig);
+        
+        this.logger.info('Initialized stereo recording stream', {
+          callDirectory,
+          sessionId
+        });
+      }
+      
+      // Initialize tee streams for branching audio
+      this.inboundTeeStream = new TeeStream();
+      this.outboundTeeStream = new TeeStream();
+      
+      // Store call directory for cleanup
+      this.callDirectory = callDirectory;
+      
+      // Create call metadata file
+      await this.createCallMetadata(callDirectory);
+      
+      this.logger.info('Recording streams initialized successfully', {
+        channelMode: recordingConfig.channelMode,
+        callDirectory,
+        sessionId
+      });
+      
+    } catch (error) {
+      this.logger.error('Failed to initialize recording streams', { error, sessionId });
+      throw error;
+    }
+  }
+
+  private async createCallMetadata(callDirectory: string): Promise<void> {
+    try {
+      const metadata = {
+        call: {
+          sessionId: this.config.sessionId,
+          startTime: new Date().toISOString(),
+          caller: this.bridgeConfig.caller,
+        },
+        audio: {
+          codec: {
+            name: this.config.codec.name,
+            clockRate: this.config.codec.clockRate,
+            channels: this.config.codec.channels || 1,
+            payload: this.config.codec.payload
+          },
+          jitterBufferMs: this.bridgeConfig.jitterBufferMs,
+          aiTempoAdjustment: this.bridgeConfig.aiTempoAdjustment
+        },
+        recording: {
+          format: this.bridgeConfig.recordingConfig?.format,
+          channelMode: this.bridgeConfig.recordingConfig?.channelMode,
+          sampleRate: this.config.codec.clockRate,
+          bitsPerSample: 16
+        },
+        transcription: {
+          enabled: this.bridgeConfig.transcriptionConfig?.enabled || false,
+          model: this.bridgeConfig.transcriptionConfig?.model
+        }
+      };
+
+      const { writeFile } = await import('fs/promises');
+      await writeFile(
+        `${callDirectory}/metadata.json`, 
+        JSON.stringify(metadata, null, 2)
+      );
+      
+      this.logger.debug('Call metadata file created', {
+        filePath: `${callDirectory}/metadata.json`,
+        sessionId: this.config.sessionId
+      });
+      
+    } catch (error) {
+      this.logger.error('Failed to create call metadata file', { 
+        error, 
+        callDirectory,
+        sessionId: this.config.sessionId 
+      });
+    }
+  }
+
+  private async cleanupRecordingStreams(): Promise<void> {
+    try {
+      // Clean up mono recorders
+      if (this.inboundRecorder) {
+        this.inboundRecorder.end();
+        this.inboundRecorder = undefined;
+      }
+      
+      if (this.outboundRecorder) {
+        this.outboundRecorder.end();
+        this.outboundRecorder = undefined;
+      }
+      
+      // Clean up stereo recorder
+      if (this.stereoRecorder) {
+        this.stereoRecorder.end();
+        this.stereoRecorder = undefined;
+      }
+      
+      // Clean up tee streams
+      if (this.inboundTeeStream) {
+        this.inboundTeeStream.destroy();
+        this.inboundTeeStream = undefined;
+      }
+      
+      if (this.outboundTeeStream) {
+        this.outboundTeeStream.destroy();
+        this.outboundTeeStream = undefined;
+      }
+      
+      // Finalize call metadata
+      if (this.callDirectory) {
+        await this.finalizeCallMetadata(this.callDirectory);
+      }
+      
+      this.logger.info('Recording streams cleaned up successfully', {
+        sessionId: this.config.sessionId
+      });
+      
+    } catch (error) {
+      this.logger.error('Error cleaning up recording streams', { 
+        error, 
+        sessionId: this.config.sessionId 
+      });
+    }
+  }
+
+  private async finalizeCallMetadata(callDirectory: string): Promise<void> {
+    try {
+      const metadataPath = `${callDirectory}/metadata.json`;
+      const { readFile, writeFile } = await import('fs/promises');
+      
+      // Read existing metadata
+      const existingMetadata = JSON.parse(await readFile(metadataPath, 'utf-8'));
+      
+      // Add call end information
+      existingMetadata.call.endTime = new Date().toISOString();
+      existingMetadata.call.duration = this.calculateCallDuration(
+        existingMetadata.call.startTime, 
+        existingMetadata.call.endTime
+      );
+      
+      // Add RTP session stats
+      existingMetadata.stats = this.getStats();
+      
+      // Add recording stats
+      existingMetadata.recording.stats = this.getRecordingStats();
+      
+      // Write updated metadata
+      await writeFile(metadataPath, JSON.stringify(existingMetadata, null, 2));
+      
+      this.logger.debug('Call metadata finalized', {
+        filePath: metadataPath,
+        duration: existingMetadata.call.duration,
+        sessionId: this.config.sessionId
+      });
+      
+    } catch (error) {
+      this.logger.error('Failed to finalize call metadata', { 
+        error, 
+        callDirectory,
+        sessionId: this.config.sessionId 
+      });
+    }
+  }
+
+  private calculateCallDuration(startTime: string, endTime: string): string {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const durationMs = end.getTime() - start.getTime();
+    const durationSeconds = Math.round(durationMs / 1000);
+    
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = durationSeconds % 60;
+    
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private async initializeTempoAdjustment(): Promise<void> {
@@ -404,8 +620,6 @@ export class RtpBridgeSessionStream extends RtpSession {
         },
         logger: this.logger,
         sessionId: this.config.sessionId || 'stream-bridge-session',
-        recordingsPath: this.bridgeConfig.recordingConfig?.recordingsPath,
-        callDirectory: this.stereoRecorderStream?.getCallDirectory()
       };
       
       this.openaiAudioSourceManager = new OpenAIAudioSourceManager(audioSourceConfig);
@@ -456,10 +670,16 @@ export class RtpBridgeSessionStream extends RtpSession {
     this.continuousScheduler.start();
   }
 
-  private sendAudioPacket(payload: Buffer, isAudioDataAvailable: boolean = false): void {
-    // Add AI audio to recording if this is OpenAI audio
-    if (this.aiRecorderStream && isAudioDataAvailable) {
-      this.aiRecorderStream.write(payload);
+  private sendAudioPacket(payload: Buffer, _isAudioDataAvailable: boolean = false): void {
+    // Record the complete outbound audio stream (includes silence, comfort noise, proper timing)
+    if (this.bridgeConfig.recordingConfig?.enabled) {
+      if (this.outboundRecorder) {
+        this.outboundRecorder.write(payload);
+      }
+      
+      if (this.stereoRecorder) {
+        this.stereoRecorder.writeOutboundAudio(payload);
+      }
     }
 
     // Send via the audio to RTP stream
@@ -602,7 +822,9 @@ export class RtpBridgeSessionStream extends RtpSession {
     try {
       if (event.delta && this.aiAudioProcessingStream) {
         const audioBuffer = Buffer.from(event.delta, 'base64');
+        
         // Send audio through the processing pipeline (with or without speed adjustment)
+        // Recording happens later in sendAudioPacket() to capture the complete RTP stream
         this.aiAudioProcessingStream.write(audioBuffer);
       }
     } catch (error) {
@@ -636,95 +858,6 @@ export class RtpBridgeSessionStream extends RtpSession {
     }
   }
 
-  private handleIncomingRtp(msg: Buffer, rinfo: dgram.RemoteInfo): void {
-    // Validate source and check if active
-    if (this.state !== 'active') {
-      return;
-    }
-
-    if (!this.validateRtpSource(rinfo.address)) {
-      this.logger.warn('Rejected RTP from untrusted source', {
-        source: `${rinfo.address}:${rinfo.port}`,
-        expected: this.latchingState.expectedRemoteAddress
-      });
-      return;
-    }
-
-    // Update statistics
-    this.updateRtpStats(msg.length, 'received');
-
-    // Perform symmetric RTP latching
-    if (!this.latchingState.rtpLatched || 
-        this.config.remoteAddress !== rinfo.address || 
-        this.config.remotePort !== rinfo.port) {
-      
-      this.logger.trace('RTP latching to source', {
-        address: rinfo.address,
-        port: rinfo.port,
-        wasExpecting: `${this.config.remoteAddress}:${this.config.remotePort}`
-      });
-
-      // Update config with actual source
-      this.config.remoteAddress = rinfo.address;
-      this.config.remotePort = rinfo.port;
-      this.latchingState.rtpLatched = true;
-      this.latchingState.actualRtpEndpoint = {
-        address: rinfo.address,
-        port: rinfo.port
-      };
-    }
-
-    // Parse and process RTP packet
-    try {
-      const rtpView = rtpJsUtils.nodeBufferToDataView(msg);
-      
-      // Check if it's a valid RTP packet - be more permissive for interoperability
-      if (!rtpJsPackets.isRtp(rtpView)) {
-        // Log details for debugging but continue if packet looks like RTP
-        const firstByte = msg.length > 0 ? msg[0]! : 0;
-        const rtpVersion = (firstByte >> 6) & 0x3;
-        
-        this.logger.debug('RTP validation failed, checking manually', {
-          packetLength: msg.length,
-          firstByte: firstByte?.toString(16) || '0',
-          rtpVersion,
-          expectedVersion: 2
-        });
-        
-        // Accept packets that have reasonable length (be permissive with version)
-        if (msg.length < 12) {
-          this.logger.warn('Received too short packet on RTP port', {
-            packetLength: msg.length,
-            rtpVersion
-          });
-          return;
-        }
-        
-        // Log version mismatches but continue processing
-        if (rtpVersion !== 2) {
-          this.logger.debug('RTP version mismatch, continuing anyway', {
-            rtpVersion,
-            expectedVersion: 2
-          });
-        }
-      }
-
-      // Parse incoming packet
-      const incomingPacket = new rtpJsPackets.RtpPacket(rtpView);
-      
-      // Extract G.711 payload
-      const payloadView = incomingPacket.getPayload();
-      const payloadBuffer = rtpJsUtils.dataViewToNodeBuffer(payloadView);
-
-      // Forward directly to OpenAI if connected
-      if (this.isConnectedToOpenAI && this.realtimeSession) {
-        this.forwardToOpenAI(payloadBuffer);
-      }
-
-    } catch (error) {
-      this.logger.warn('Error processing RTP packet', { error });
-    }
-  }
 
   private forwardToOpenAI(audioBuffer: Buffer): void {
     if (!this.isConnectedToOpenAI || !this.realtimeSession) {
@@ -774,7 +907,6 @@ export class RtpBridgeSessionStream extends RtpSession {
       rtpInput: this.rtpToAudioStream?.getStats(),
       rtpOutput: this.audioToRtpStream?.getStats(),
       jitterBuffer: this.jitterBufferTransform?.getStats(),
-      stereoRecorder: this.stereoRecorderStream?.getStats()
     };
   }
 
@@ -782,5 +914,19 @@ export class RtpBridgeSessionStream extends RtpSession {
     if (this.jitterBufferTransform) {
       this.jitterBufferTransform.flush();
     }
+  }
+
+  public getRecordingStats() {
+    if (!this.bridgeConfig.recordingConfig?.enabled) {
+      return null;
+    }
+    
+    return {
+      inbound: this.inboundRecorder?.getStats(),
+      outbound: this.outboundRecorder?.getStats(),
+      stereo: this.stereoRecorder?.getStats(),
+      enabled: true,
+      channelMode: this.bridgeConfig.recordingConfig.channelMode
+    };
   }
 }

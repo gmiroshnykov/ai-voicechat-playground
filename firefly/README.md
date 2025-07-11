@@ -212,7 +212,6 @@ The application provides structured JSON logging with:
 
 - [ ] WebSocket control interface
 - [ ] Prometheus metrics export  
-- [ ] Call recording to S3
 - [ ] Dynamic codec transcoding
 - [ ] DTMF detection and handling
 - [ ] Conference bridge support

@@ -89,6 +89,20 @@ export class RtpToAudioStream extends Readable {
   }
 
   private handleRtpPacket(msg: Buffer, rinfo: dgram.RemoteInfo): void {
+    // Filter out STUN packets (they start with 0x00 or 0x01)
+    if (msg.length >= 1) {
+      const firstByte = msg[0]!;
+      if (firstByte === 0x00 || firstByte === 0x01) {
+        this.logger.debug('Received STUN packet on RTP port, ignoring', {
+          sourceAddress: rinfo.address,
+          sourcePort: rinfo.port,
+          packetLength: msg.length,
+          firstBytes: msg.subarray(0, 4).toString('hex')
+        });
+        return;
+      }
+    }
+
     // Validate source address
     if (!this.validateRtpSource(rinfo.address)) {
       this.logger.warn('Received RTP packet from invalid source', {
@@ -186,7 +200,14 @@ export class RtpToAudioStream extends Readable {
       this.push(packetInfo);
 
     } catch (error) {
-      this.logger.warn('Error processing RTP packet', { error });
+      this.logger.warn('Error processing RTP packet', { 
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        packetLength: msg.length,
+        sourceAddress: rinfo.address,
+        sourcePort: rinfo.port
+      });
     }
   }
 

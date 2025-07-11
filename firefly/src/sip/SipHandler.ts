@@ -91,8 +91,8 @@ export class SipHandler {
         sessionId: callContext.callId,
         sessionType,
         openaiConfig: this.config.openai,
-        recordingConfig: this.config.recording,
         transcriptionConfig: this.config.transcription,
+        recordingConfig: this.config.recording,
         testAudioConfig: this.config.testAudio,
         streamConfig: {
           aiTempoAdjustment: this.config.aiAudio.tempoAdjustment
@@ -110,7 +110,7 @@ export class SipHandler {
             callLogger.error('Error flushing jitter buffer during hangup', error);
           }
           
-          // Give time for the flushed audio to be processed and recorded
+          // Give time for the flushed audio to be processed
           // This ensures the complete conversation including final caller words is captured
           await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 500ms
           

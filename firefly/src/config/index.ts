@@ -112,11 +112,6 @@ export function loadConfig(): AppConfig {
       apiKey: openaiApiKey
     };
 
-    // Recording config (enabled by default)
-    const recordingConfig = {
-      enabled: validateBooleanEnv(getOptionalEnv('CALL_RECORDING_ENABLED', 'true')),
-      recordingsPath: getOptionalEnv('CALL_RECORDINGS_PATH', './recordings')
-    };
 
     // Transcription config (enabled by default)
     const transcriptionConfig = {
@@ -145,15 +140,37 @@ export function loadConfig(): AppConfig {
       tempoAdjustment: aiAudioTempo !== 1.0 ? { tempo: aiAudioTempo } : undefined
     };
 
+    // Recording config
+    const recordingEnabled = validateBooleanEnv(getOptionalEnv('RECORDING_ENABLED', 'true'));
+    const recordingChannelMode = getOptionalEnv('RECORDING_CHANNEL_MODE', 'both');
+    
+    if (!['mono', 'stereo', 'both'].includes(recordingChannelMode)) {
+      throw new ConfigurationError(`Invalid RECORDING_CHANNEL_MODE: ${recordingChannelMode}. Must be 'mono', 'stereo', or 'both'`);
+    }
+    
+    const recordingFormat = getOptionalEnv('RECORDING_FORMAT', 'wav');
+    if (!['wav', 'raw'].includes(recordingFormat)) {
+      throw new ConfigurationError(`Invalid RECORDING_FORMAT: ${recordingFormat}. Must be 'wav' or 'raw'`);
+    }
+    
+    const recordingConfig = {
+      enabled: recordingEnabled,
+      format: recordingFormat as 'wav' | 'raw',
+      directory: getOptionalEnv('RECORDING_DIRECTORY', './recordings'),
+      channelMode: recordingChannelMode as 'mono' | 'stereo' | 'both',
+      includeMetadata: validateBooleanEnv(getOptionalEnv('RECORDING_INCLUDE_METADATA', 'true')),
+      filenamePrefix: getOptionalEnv('RECORDING_FILENAME_PREFIX', 'call')
+    };
+
     const config: AppConfig = {
       sip: sipConfig,
       drachtio: drachtioConfig,
       rtp: rtpConfig,
       openai: openaiConfig,
-      recording: recordingConfig,
       transcription: transcriptionConfig,
       testAudio: testAudioConfig,
       aiAudio: aiAudioConfig,
+      recording: recordingConfig,
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

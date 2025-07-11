@@ -3,7 +3,7 @@ import { RtpEchoSession } from './RtpEchoSession';
 import { RtpBridgeSessionStream, RtpBridgeSessionStreamConfig } from './RtpBridgeSessionStream';
 import { RtpTestAudioSession, RtpTestAudioSessionConfig } from './RtpTestAudioSession';
 import { RtpSessionConfig, CodecInfo } from './types';
-import { RtpConfig, OpenAIConfig, RecordingConfig, TranscriptionConfig } from '../config/types';
+import { RtpConfig, OpenAIConfig, TranscriptionConfig, RecordingConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RtpPortAllocationError, RtpSessionError } from '../utils/errors';
 
@@ -15,8 +15,8 @@ export interface CreateSessionOptions {
   sessionType?: 'echo' | 'bridge' | 'bridge_stream' | 'test_audio';
   // OpenAI bridge specific options
   openaiConfig?: OpenAIConfig;
-  recordingConfig?: RecordingConfig;
   transcriptionConfig?: TranscriptionConfig;
+  recordingConfig?: RecordingConfig;
   caller?: {
     phoneNumber?: string;
     diversionHeader?: string;
@@ -95,8 +95,8 @@ export class RtpManager {
             ...sessionConfig,
             openaiApiKey: options.openaiConfig.apiKey,
             jitterBufferMs: this.rtpConfig.jitterBufferMs,
-            recordingConfig: options.recordingConfig,
             transcriptionConfig: options.transcriptionConfig,
+            recordingConfig: options.recordingConfig,
             caller: options.caller,
             onHangUpRequested: options.onHangUpRequested,
             aiTempoAdjustment: options.streamConfig?.aiTempoAdjustment

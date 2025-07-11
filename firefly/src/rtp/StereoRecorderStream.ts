@@ -1,405 +1,424 @@
 import { Writable } from 'stream';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createLogger, Logger } from '../utils/logger';
-import { 
-  CODEC_SILENCE_VALUES, 
-  AUDIO_CONSTANTS, 
-  WAV_CONSTANTS
-} from '../constants';
-import { CallRecorderConfig, CallRecorderStats, CallMetadata } from './CallRecorder';
+import { createWriteStream, WriteStream } from 'fs';
+import { mkdir } from 'fs/promises';
+import { dirname } from 'path';
+import { CodecInfo, CodecType } from './types';
+import { Logger } from '../utils/logger';
 
-/**
- * Channel identifier for stereo recording
- */
-export type AudioChannel = 'caller' | 'ai';
+export interface StereoRecorderStreamConfig {
+  filePath: string;
+  codec: CodecInfo;
+  sessionId: string;
+  bufferSizeMs?: number; // Buffer size for synchronization (default: 100ms)
+  logger?: Logger;
+}
 
-/**
- * Stream-based stereo call recorder that mixes caller and AI audio in real-time
- * No timers or buffering - pure stream-based approach
- */
+
 export class StereoRecorderStream extends Writable {
-  private readonly config: CallRecorderConfig;
+  private readonly config: StereoRecorderStreamConfig;
   private readonly logger: Logger;
-  private readonly startTime: Date;
-  private callDirectory?: string;
-  private stereoStream?: fs.WriteStream;
-  private stats: CallRecorderStats;
-  private isRecording = false;
-  private silenceValue!: number;
-  private totalFramesWritten = 0;
+  private fileStream?: WriteStream;
+  private wavHeaderWritten = false;
+  private bytesWritten = 0;
+  private sampleRate: number;
+  private bitsPerSample: number;
+  
+  // Chunk-based stereo mixing (no timers!)
+  private leftBuffer: Buffer[] = [];
+  private rightBuffer: Buffer[] = [];
+  private isClosing = false;
 
-  // Real-time frame mixing
-  private currentCallerFrame: Buffer = Buffer.alloc(0);
-  private currentAIFrame: Buffer = Buffer.alloc(0);
-  private readonly frameSize = AUDIO_CONSTANTS.G711_FRAME_SIZE; // 160 bytes = 20ms
-
-  constructor(config: CallRecorderConfig) {
-    super({ 
-      objectMode: false,
-      highWaterMark: 64 * 1024 // 64KB buffer
-    });
-    
+  constructor(config: StereoRecorderStreamConfig) {
+    super({ objectMode: true }); // Accept objects with channel info
     this.config = config;
-    this.startTime = new Date();
-    this.logger = createLogger({ 
-      component: 'StereoRecorderStream',
-      callId: config.callId 
+    this.logger = config.logger || {
+      trace: console.trace.bind(console),
+      debug: console.debug.bind(console),
+      info: console.info.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+      child: () => this.logger
+    } as Logger;
+    // Set audio parameters based on codec
+    this.sampleRate = config.codec.clockRate;
+    this.bitsPerSample = this.getBitsPerSample(config.codec.name);
+  }
+
+  private getBitsPerSample(codecName: string): number {
+    // All codecs are converted to 16-bit PCM for WAV output
+    switch (codecName) {
+      case CodecType.PCMU:
+      case CodecType.PCMA:
+        return 16; // G.711 converted to 16-bit PCM
+      case CodecType.G722:
+        return 16; // G.722 uses 16 bits per sample
+      case CodecType.OPUS:
+        return 16; // OPUS typically decoded to 16 bits
+      default:
+        return 16; // Default to 16 bits
+    }
+  }
+
+  private async ensureDirectoryExists(): Promise<void> {
+    const dir = dirname(this.config.filePath);
+    try {
+      await mkdir(dir, { recursive: true });
+    } catch (error) {
+      this.logger.error('Failed to create recording directory', { 
+        directory: dir, 
+        error,
+        sessionId: this.config.sessionId 
+      });
+      throw error;
+    }
+  }
+
+  private async createFileStream(): Promise<void> {
+    await this.ensureDirectoryExists();
+    
+    this.fileStream = createWriteStream(this.config.filePath);
+    
+    this.fileStream.on('error', (error) => {
+      this.logger.error('Stereo recording file stream error', { 
+        filePath: this.config.filePath,
+        error,
+        sessionId: this.config.sessionId 
+      });
+      this.emit('error', error);
     });
-    
-    this.stats = {
-      callerPackets: 0,
-      callerBytes: 0,
-      aiPackets: 0,
-      aiBytes: 0
-    };
-  }
 
-  public async start(): Promise<void> {
-    if (!this.config.enabled) {
-      this.logger.debug('Call recording disabled, skipping');
-      return;
-    }
-
-    try {
-      this.logger.debug('Starting stereo recording stream');
-      
-      // Create directory structure
-      await this.createCallDirectory();
-      
-      // Initialize WAV file
-      await this.initializeStereoRecording();
-      
-      this.isRecording = true;
-      
-      this.logger.info('Stereo recording stream started', {
-        callDirectory: this.callDirectory,
-        codec: this.config.codec.name
+    this.fileStream.on('close', () => {
+      this.logger.debug('Stereo recording file stream closed', { 
+        filePath: this.config.filePath,
+        bytesWritten: this.bytesWritten,
+        sessionId: this.config.sessionId 
       });
-      
-    } catch (error) {
-      this.logger.error('Failed to start stereo recording stream', error);
-      throw error;
+    });
+  }
+
+  private writeWavHeader(): void {
+    if (!this.fileStream || this.wavHeaderWritten) return;
+
+    const channels = 2; // Stereo recording
+    const byteRate = this.sampleRate * channels * (this.bitsPerSample / 8);
+    const blockAlign = channels * (this.bitsPerSample / 8);
+
+    // WAV header structure
+    const header = Buffer.alloc(44);
+    
+    // RIFF header
+    header.write('RIFF', 0);
+    header.writeUInt32LE(0, 4); // File size - 8 (will be updated later)
+    header.write('WAVE', 8);
+    
+    // fmt chunk
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16); // fmt chunk size
+    header.writeUInt16LE(1, 20); // PCM format
+    header.writeUInt16LE(channels, 22); // Number of channels
+    header.writeUInt32LE(this.sampleRate, 24); // Sample rate
+    header.writeUInt32LE(byteRate, 28); // Byte rate
+    header.writeUInt16LE(blockAlign, 32); // Block align
+    header.writeUInt16LE(this.bitsPerSample, 34); // Bits per sample
+    
+    // data chunk
+    header.write('data', 36);
+    header.writeUInt32LE(0, 40); // Data size (will be updated later)
+    
+    this.fileStream.write(header);
+    this.wavHeaderWritten = true;
+    
+    this.logger.debug('Stereo WAV header written', { 
+      filePath: this.config.filePath,
+      sampleRate: this.sampleRate,
+      bitsPerSample: this.bitsPerSample,
+      sessionId: this.config.sessionId 
+    });
+  }
+
+  private convertAudioData(audioBuffer: Buffer): Buffer {
+    // Convert codec-specific audio data to PCM for WAV
+    switch (this.config.codec.name) {
+      case CodecType.PCMU:
+        return this.convertPCMUToPCM(audioBuffer);
+      case CodecType.PCMA:
+        return this.convertPCMAToPCM(audioBuffer);
+      case CodecType.G722:
+      case CodecType.OPUS:
+        // For G.722 and OPUS, assume they're already decoded to PCM
+        return audioBuffer;
+      default:
+        return audioBuffer;
     }
   }
 
-  public async stop(): Promise<void> {
-    if (!this.isRecording) {
-      return;
+  private convertPCMUToPCM(pcmuBuffer: Buffer): Buffer {
+    // Simple G.711 μ-law to 16-bit PCM conversion
+    const pcmBuffer = Buffer.alloc(pcmuBuffer.length * 2);
+    for (let i = 0; i < pcmuBuffer.length; i++) {
+      const byte = pcmuBuffer[i];
+      if (byte !== undefined) {
+        const sample = this.ulaw2linear(byte);
+        pcmBuffer.writeInt16LE(sample, i * 2);
+      }
     }
-
-    try {
-      this.logger.debug('Stopping stereo recording stream');
-      
-      // Finalize WAV file
-      await this.finalizeStereoRecording();
-      
-      // Save metadata
-      await this.saveCallMetadata();
-      
-      this.isRecording = false;
-      
-      this.logger.info('Stereo recording stream stopped', {
-        totalFrames: this.totalFramesWritten,
-        stats: this.stats
-      });
-      
-    } catch (error) {
-      this.logger.error('Error stopping stereo recording stream', error);
-      throw error;
-    }
+    return pcmBuffer;
   }
 
-  /**
-   * Main write method - receives mixed audio chunks tagged with channel info
-   */
-  _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
-    if (!this.isRecording) {
-      callback();
-      return;
+  private convertPCMAToPCM(pcmaBuffer: Buffer): Buffer {
+    // Simple G.711 A-law to 16-bit PCM conversion
+    const pcmBuffer = Buffer.alloc(pcmaBuffer.length * 2);
+    for (let i = 0; i < pcmaBuffer.length; i++) {
+      const byte = pcmaBuffer[i];
+      if (byte !== undefined) {
+        const sample = this.alaw2linear(byte);
+        pcmBuffer.writeInt16LE(sample, i * 2);
+      }
     }
-
-    try {
-      // This implementation expects pre-mixed stereo audio
-      // Individual channel writes should use writeChannelAudio() method
-      this.writeToStereoStream(chunk);
-      callback();
-    } catch (error) {
-      this.logger.error('Error writing to stereo recording', error);
-      callback(error as Error);
-    }
+    return pcmBuffer;
   }
 
-  /**
-   * Write audio from a specific channel (caller or AI)
-   * This method handles real-time mixing of the two channels
-   */
-  public writeChannelAudio(channel: AudioChannel, audioData: Buffer): void {
-    if (!this.isRecording) {
-      return;
-    }
+  private ulaw2linear(ulaw: number): number {
+    // G.711 μ-law to linear PCM conversion
+    const BIAS = 0x84;
+    const CLIP = 8159;
+    
+    ulaw = ~ulaw;
+    const sign = (ulaw & 0x80) ? -1 : 1;
+    const exponent = (ulaw >> 4) & 0x07;
+    const mantissa = ulaw & 0x0F;
+    
+    let sample = mantissa * 2 + 33;
+    sample = sample << (exponent + 2);
+    sample -= BIAS;
+    
+    return sign * Math.min(sample, CLIP);
+  }
 
-    // Update stats
-    if (channel === 'caller') {
-      this.stats.callerPackets++;
-      this.stats.callerBytes += audioData.length;
+  private alaw2linear(alaw: number): number {
+    // G.711 A-law to linear PCM conversion
+    const sign = (alaw & 0x80) ? -1 : 1;
+    const exponent = (alaw >> 4) & 0x07;
+    const mantissa = alaw & 0x0F;
+    
+    let sample = mantissa * 2;
+    if (exponent > 0) {
+      sample += 33;
+      sample = sample << (exponent - 1);
     } else {
-      this.stats.aiPackets++;
-      this.stats.aiBytes += audioData.length;
-    }
-
-    // Process audio data in frame-sized chunks
-    let offset = 0;
-    while (offset < audioData.length) {
-      const remainingBytes = audioData.length - offset;
-      const chunkSize = Math.min(this.frameSize, remainingBytes);
-      const chunk = audioData.subarray(offset, offset + chunkSize);
-      
-      this.processChannelChunk(channel, chunk);
-      offset += chunkSize;
-    }
-  }
-
-  /**
-   * Process a chunk of audio for a specific channel
-   * Mixes with the other channel and writes complete stereo frames
-   */
-  private processChannelChunk(channel: AudioChannel, chunk: Buffer): void {
-    if (channel === 'caller') {
-      this.currentCallerFrame = Buffer.concat([this.currentCallerFrame, chunk]);
-    } else {
-      this.currentAIFrame = Buffer.concat([this.currentAIFrame, chunk]);
-    }
-
-    // When we have enough data for a complete frame, mix and write
-    const minFrameLength = Math.min(this.currentCallerFrame.length, this.currentAIFrame.length);
-    
-    if (minFrameLength >= this.frameSize) {
-      const callerFrameData = this.currentCallerFrame.subarray(0, this.frameSize);
-      const aiFrameData = this.currentAIFrame.subarray(0, this.frameSize);
-      
-      // Create interleaved stereo frame
-      const stereoFrame = this.interleaveStereoAudio(callerFrameData, aiFrameData);
-      this.writeToStereoStream(stereoFrame);
-      
-      // Remove processed data from buffers
-      this.currentCallerFrame = this.currentCallerFrame.subarray(this.frameSize);
-      this.currentAIFrame = this.currentAIFrame.subarray(this.frameSize);
-    }
-  }
-
-  /**
-   * Force write any remaining buffered audio (called during stop)
-   */
-  public flushBufferedAudio(): void {
-    if (this.currentCallerFrame.length > 0 || this.currentAIFrame.length > 0) {
-      const maxLength = Math.max(this.currentCallerFrame.length, this.currentAIFrame.length);
-      
-      // Pad shorter buffer with silence
-      const callerPadded = this.padWithSilence(this.currentCallerFrame, maxLength);
-      const aiPadded = this.padWithSilence(this.currentAIFrame, maxLength);
-      
-      const stereoFrame = this.interleaveStereoAudio(callerPadded, aiPadded);
-      this.writeToStereoStream(stereoFrame);
-      
-      // Clear buffers
-      this.currentCallerFrame = Buffer.alloc(0);
-      this.currentAIFrame = Buffer.alloc(0);
-    }
-  }
-
-  private padWithSilence(buffer: Buffer, targetLength: number): Buffer {
-    if (buffer.length >= targetLength) {
-      return buffer;
+      sample += 1;
     }
     
-    const padded = Buffer.alloc(targetLength);
-    buffer.copy(padded);
-    padded.fill(this.silenceValue, buffer.length);
-    return padded;
+    return sign * sample * 16;
   }
 
-  private interleaveStereoAudio(leftChannel: Buffer, rightChannel: Buffer): Buffer {
-    const maxLength = Math.max(leftChannel.length, rightChannel.length);
-    const stereoBuffer = Buffer.alloc(maxLength * 2);
+  private tryMixAndWrite(): void {
+    if (!this.fileStream || !this.wavHeaderWritten || this.isClosing) return;
+    if (this.leftBuffer.length === 0 || this.rightBuffer.length === 0) return;
+
+    // Combine buffers from each channel
+    const leftCombined = Buffer.concat(this.leftBuffer);
+    const rightCombined = Buffer.concat(this.rightBuffer);
     
-    for (let i = 0; i < maxLength; i++) {
-      const leftSample = i < leftChannel.length ? leftChannel[i]! : this.silenceValue;
-      const rightSample = i < rightChannel.length ? rightChannel[i]! : this.silenceValue;
+    // Find minimum available audio to mix (ensure we don't run out of one channel)
+    const minLength = Math.min(leftCombined.length, rightCombined.length);
+    
+    // Ensure we have at least one complete stereo sample (4 bytes)
+    const chunkSize = Math.floor(minLength / 4) * 4;
+    
+    if (chunkSize >= 4) {
+      // Extract portions to mix
+      const leftChunk = leftCombined.slice(0, chunkSize);
+      const rightChunk = rightCombined.slice(0, chunkSize);
       
-      stereoBuffer[i * 2] = leftSample;
-      stereoBuffer[i * 2 + 1] = rightSample;
+      // Mix to stereo and write
+      const stereoChunk = this.mixToStereo(leftChunk, rightChunk);
+      this.fileStream.write(stereoChunk);
+      this.bytesWritten += stereoChunk.length;
+      
+      // Update buffers with remainders
+      const leftRemainder = leftCombined.slice(chunkSize);
+      const rightRemainder = rightCombined.slice(chunkSize);
+      
+      this.leftBuffer = leftRemainder.length > 0 ? [leftRemainder] : [];
+      this.rightBuffer = rightRemainder.length > 0 ? [rightRemainder] : [];
+      
+      // Try to mix more if data is still available
+      this.tryMixAndWrite();
+    }
+  }
+
+  private mixToStereo(leftMono: Buffer, rightMono: Buffer): Buffer {
+    const sampleCount = leftMono.length / 2; // 16-bit samples
+    const stereoBuffer = Buffer.alloc(sampleCount * 4); // 2 channels * 2 bytes per sample
+    
+    for (let i = 0; i < sampleCount; i++) {
+      const leftSample = leftMono.readInt16LE(i * 2);
+      const rightSample = rightMono.readInt16LE(i * 2);
+      
+      // Write true stereo: both channels playing simultaneously
+      stereoBuffer.writeInt16LE(leftSample, i * 4);       // Left channel
+      stereoBuffer.writeInt16LE(rightSample, i * 4 + 2);  // Right channel
     }
     
     return stereoBuffer;
   }
 
-  private writeToStereoStream(stereoData: Buffer): void {
-    if (!this.stereoStream) {
-      return;
-    }
-
-    this.stereoStream.write(stereoData);
-    this.totalFramesWritten += stereoData.length / 2; // Divide by 2 for stereo
-  }
-
-  private async createCallDirectory(): Promise<void> {
-    const dateStr = this.startTime.toISOString().split('T')[0]!;
-    const timeStr = this.startTime.getTime().toString();
-    const callerStr = this.config.caller.phoneNumber || 'unknown';
-    
-    this.callDirectory = path.join(
-      this.config.recordingsPath,
-      dateStr,
-      `call-${timeStr}-${callerStr}`
-    );
-    
-    await fs.promises.mkdir(this.callDirectory, { recursive: true });
-    
-    this.logger.debug('Created call directory', {
-      directory: this.callDirectory
-    });
-  }
-
-  private async initializeStereoRecording(): Promise<void> {
-    if (!this.callDirectory) {
-      throw new Error('Call directory not initialized');
-    }
-
-    // Set silence value based on codec
-    this.silenceValue = this.config.codec.name === 'PCMU' ? 
-      CODEC_SILENCE_VALUES.PCMU : CODEC_SILENCE_VALUES.PCMA;
-
-    // Create stereo WAV file
-    const stereoPath = path.join(this.callDirectory, 'conversation.wav');
-    this.stereoStream = fs.createWriteStream(stereoPath);
-    
-    // Write WAV header for stereo (2 channels)
-    const wavHeader = this.createWavHeader(2);
-    this.stereoStream.write(wavHeader);
-    
-    this.logger.debug('Initialized stereo recording', {
-      path: stereoPath,
-      codec: this.config.codec.name,
-      silenceValue: this.silenceValue
-    });
-  }
-
-  private createWavHeader(channels: number): Buffer {
-    const sampleRate = AUDIO_CONSTANTS.SAMPLE_RATE;
-    const bitsPerSample = WAV_CONSTANTS.BITS_PER_SAMPLE;
-    const header = Buffer.alloc(WAV_CONSTANTS.HEADER_SIZE);
-    
-    // RIFF header
-    header.write('RIFF', 0);
-    header.writeUInt32LE(0xFFFFFFFF, 4); // File size (will be updated later)
-    header.write('WAVE', 8);
-    
-    // fmt chunk
-    header.write('fmt ', 12);
-    header.writeUInt32LE(16, 16); // Subchunk1Size
-    header.writeUInt16LE(1, 20); // AudioFormat (PCM)
-    header.writeUInt16LE(channels, 22); // NumChannels
-    header.writeUInt32LE(sampleRate, 24); // SampleRate
-    header.writeUInt32LE(sampleRate * channels * bitsPerSample / 8, 28); // ByteRate
-    header.writeUInt16LE(channels * bitsPerSample / 8, 32); // BlockAlign
-    header.writeUInt16LE(bitsPerSample, 34); // BitsPerSample
-    
-    // data chunk
-    header.write('data', 36);
-    header.writeUInt32LE(0xFFFFFFFF, 40); // Subchunk2Size (will be updated later)
-    
-    return header;
-  }
-
-  private async finalizeStereoRecording(): Promise<void> {
-    if (!this.stereoStream) {
-      return;
-    }
-
-    // Flush any remaining buffered audio
-    this.flushBufferedAudio();
-    
-    // Update WAV header with actual file size
-    const filePath = (this.stereoStream as any).path;
-    this.stereoStream.end();
-    
-    // Wait for stream to finish
-    await new Promise<void>((resolve, reject) => {
-      this.stereoStream!.on('finish', resolve);
-      this.stereoStream!.on('error', reject);
-    });
-    
-    // Update WAV header with correct sizes
-    await this.updateWavHeader(filePath, this.totalFramesWritten);
-    
-    this.logger.debug('Finalized stereo recording', {
-      path: filePath,
-      totalFrames: this.totalFramesWritten
-    });
-  }
-
-  private async updateWavHeader(filePath: string, dataSize: number): Promise<void> {
-    const handle = await fs.promises.open(filePath, 'r+');
-    
+  async _write(chunk: any, _encoding: BufferEncoding, callback: (error?: Error | null) => void): Promise<void> {
     try {
-      // Update file size (total file size - 8 bytes)
-      const fileSize = dataSize + WAV_CONSTANTS.HEADER_SIZE - 8;
-      await handle.write(Buffer.from([
-        fileSize & 0xff,
-        (fileSize >> 8) & 0xff,
-        (fileSize >> 16) & 0xff,
-        (fileSize >> 24) & 0xff
-      ]), 0, 4, 4);
+      if (!this.fileStream) {
+        await this.createFileStream();
+      }
       
-      // Update data chunk size
-      await handle.write(Buffer.from([
-        dataSize & 0xff,
-        (dataSize >> 8) & 0xff,
-        (dataSize >> 16) & 0xff,
-        (dataSize >> 24) & 0xff
-      ]), 0, 4, 40);
+      if (!this.wavHeaderWritten) {
+        this.writeWavHeader();
+      }
       
-    } finally {
-      await handle.close();
+      // Expect chunk to be an object with channel and audio data
+      const { channel, audio } = chunk;
+      
+      if (channel === 'inbound') {
+        const convertedAudio = this.convertAudioData(audio);
+        this.leftBuffer.push(convertedAudio);
+        this.tryMixAndWrite(); // Mix immediately when data arrives
+      } else if (channel === 'outbound') {
+        const convertedAudio = this.convertAudioData(audio);
+        this.rightBuffer.push(convertedAudio);
+        this.tryMixAndWrite(); // Mix immediately when data arrives
+      } else {
+        this.logger.warn('Unknown channel in stereo recorder', { 
+          channel, 
+          sessionId: this.config.sessionId 
+        });
+      }
+      
+      callback();
+    } catch (error) {
+      callback(error as Error);
     }
   }
 
-  private async saveCallMetadata(): Promise<void> {
-    if (!this.callDirectory) {
-      return;
+  async _final(callback: (error?: Error | null) => void): Promise<void> {
+    try {
+      this.isClosing = true;
+      
+      // Process any remaining buffered audio before closing
+      this.flushBuffers();
+      
+      if (this.fileStream) {
+        // Close the stream first
+        await new Promise<void>((resolve) => {
+          this.fileStream!.end(() => {
+            resolve();
+          });
+        });
+        
+        // Update WAV header with final sizes
+        await this.finalizeWavHeader();
+        
+        this.logger.info('Stereo recording completed', { 
+          filePath: this.config.filePath,
+          bytesWritten: this.bytesWritten,
+          sessionId: this.config.sessionId 
+        });
+      }
+      
+      callback();
+    } catch (error) {
+      callback(error as Error);
     }
+  }
 
-    const endTime = new Date();
-    const metadata: CallMetadata = {
-      callId: this.config.callId,
-      startTime: this.startTime.toISOString(),
-      endTime: endTime.toISOString(),
-      duration: endTime.getTime() - this.startTime.getTime(),
-      caller: this.config.caller,
-      diversion: this.config.diversion,
-      codec: {
-        name: this.config.codec.name,
-        sampleRate: this.config.codec.clockRate,
-        channels: this.config.codec.channels || 1
-      },
-      stats: this.stats
+  private flushBuffers(): void {
+    // Mix any remaining audio in buffers, even if one channel is empty
+    if (this.leftBuffer.length > 0 || this.rightBuffer.length > 0) {
+      const leftCombined = this.leftBuffer.length > 0 ? Buffer.concat(this.leftBuffer) : Buffer.alloc(0);
+      const rightCombined = this.rightBuffer.length > 0 ? Buffer.concat(this.rightBuffer) : Buffer.alloc(0);
+      
+      // Pad the shorter buffer with silence to match lengths
+      const maxLength = Math.max(leftCombined.length, rightCombined.length);
+      const paddedLeft = maxLength > leftCombined.length ? 
+        Buffer.concat([leftCombined, Buffer.alloc(maxLength - leftCombined.length)]) : leftCombined;
+      const paddedRight = maxLength > rightCombined.length ?
+        Buffer.concat([rightCombined, Buffer.alloc(maxLength - rightCombined.length)]) : rightCombined;
+      
+      if (maxLength >= 4) {
+        const finalChunkSize = Math.floor(maxLength / 4) * 4;
+        const finalLeft = paddedLeft.slice(0, finalChunkSize);
+        const finalRight = paddedRight.slice(0, finalChunkSize);
+        
+        const stereoChunk = this.mixToStereo(finalLeft, finalRight);
+        if (this.fileStream) {
+          this.fileStream.write(stereoChunk);
+          this.bytesWritten += stereoChunk.length;
+        }
+      }
+      
+      // Clear buffers
+      this.leftBuffer = [];
+      this.rightBuffer = [];
+    }
+  }
+
+  private async finalizeWavHeader(): Promise<void> {
+    if (!this.wavHeaderWritten || this.bytesWritten === 0) return;
+
+    try {
+      const fs = await import('fs');
+      const fileHandle = await fs.promises.open(this.config.filePath, 'r+');
+      
+      try {
+        // Update file size (total file size - 8) at offset 4
+        const fileSizeBuffer = Buffer.alloc(4);
+        fileSizeBuffer.writeUInt32LE(this.bytesWritten + 36, 0); // 44 - 8 = 36
+        await fileHandle.write(fileSizeBuffer, 0, 4, 4);
+        
+        // Update data chunk size at offset 40
+        const dataSizeBuffer = Buffer.alloc(4);
+        dataSizeBuffer.writeUInt32LE(this.bytesWritten, 0);
+        await fileHandle.write(dataSizeBuffer, 0, 4, 40);
+        
+        this.logger.debug('WAV header finalized', {
+          filePath: this.config.filePath,
+          totalFileSize: this.bytesWritten + 44,
+          audioDataSize: this.bytesWritten,
+          sessionId: this.config.sessionId
+        });
+      } finally {
+        await fileHandle.close();
+      }
+    } catch (error) {
+      this.logger.error('Failed to finalize WAV header', {
+        filePath: this.config.filePath,
+        error,
+        sessionId: this.config.sessionId
+      });
+    }
+  }
+
+  public writeInboundAudio(audio: Buffer): void {
+    if (!this.isClosing) {
+      this.write({ channel: 'inbound', audio });
+    }
+  }
+
+  public writeOutboundAudio(audio: Buffer): void {
+    if (!this.isClosing) {
+      this.write({ channel: 'outbound', audio });
+    }
+  }
+
+  public getStats() {
+    return {
+      filePath: this.config.filePath,
+      bytesWritten: this.bytesWritten,
+      wavHeaderWritten: this.wavHeaderWritten,
+      sampleRate: this.sampleRate,
+      bitsPerSample: this.bitsPerSample,
+      leftBufferChunks: this.leftBuffer.length,
+      rightBufferChunks: this.rightBuffer.length,
+      leftBufferBytes: this.leftBuffer.reduce((total, buf) => total + buf.length, 0),
+      rightBufferBytes: this.rightBuffer.reduce((total, buf) => total + buf.length, 0)
     };
-
-    const metadataPath = path.join(this.callDirectory, 'metadata.json');
-    await fs.promises.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-    
-    this.logger.debug('Saved call metadata', {
-      path: metadataPath,
-      metadata
-    });
-  }
-
-  public getCallDirectory(): string | undefined {
-    return this.callDirectory;
-  }
-
-  public getStats(): Readonly<CallRecorderStats> {
-    return { ...this.stats };
   }
 }

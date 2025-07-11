@@ -74,3 +74,12 @@ export interface FrameSizeDetection {
   lastReceivedSeqNum?: number;
   frameSizeConfirmed: boolean;
 }
+
+export interface RecordingConfig {
+  enabled: boolean;
+  format: 'wav' | 'raw';
+  directory: string;
+  channelMode: 'mono' | 'stereo' | 'both';
+  includeMetadata?: boolean;
+  filenamePrefix?: string;
+}

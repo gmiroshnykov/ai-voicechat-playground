@@ -15,7 +15,7 @@ export interface TempoAdjustTransformConfig {
  * 
  * IMPORTANT: This should only be used with buffered audio streams,
  * NOT with real-time audio as it introduces processing latency.
- * Perfect for pre-recorded audio or AI responses that come in bursts.
+ * Perfect for buffered audio or AI responses that come in bursts.
  */
 export class TempoAdjustTransform extends Transform {
   private readonly config: TempoAdjustTransformConfig;

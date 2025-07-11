@@ -2,7 +2,7 @@ import { PassThrough, Writable } from 'stream';
 
 /**
  * Creates a "tee" stream that duplicates input to multiple outputs
- * Useful for forking audio streams for recording while continuing main processing
+ * Useful for forking audio streams for debugging while continuing main processing
  */
 export class TeeStream extends PassThrough {
   private readonly outputs: Writable[] = [];
@@ -58,7 +58,7 @@ export class TeeStream extends PassThrough {
     };
 
     // Write to all outputs
-    this.outputs.forEach(output => {
+    this.outputs.forEach((output) => {
       output.write(chunk, onOutputComplete);
     });
   }

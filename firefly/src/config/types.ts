@@ -28,11 +28,6 @@ export interface OpenAIConfig {
   enabled: boolean;
 }
 
-export interface RecordingConfig {
-  enabled: boolean;
-  recordingsPath: string;
-}
-
 export interface TranscriptionConfig {
   enabled: boolean;
   model: string;
@@ -51,6 +46,15 @@ export interface AIAudioConfig {
   };
 }
 
+export interface RecordingConfig {
+  enabled: boolean;
+  format: 'wav' | 'raw';
+  directory: string;
+  channelMode: 'mono' | 'stereo' | 'both';
+  includeMetadata?: boolean;
+  filenamePrefix?: string;
+}
+
 export const OPENAI_AGENT_NAME = 'Firefly Assistant';
 
 export const OPENAI_AGENT_INSTRUCTIONS = `You are a helpful voice assistant connected via telephone. Start the conversation in Ukrainian, but switch to English if the caller requests it or speaks English to you.
@@ -64,10 +68,10 @@ export interface AppConfig {
   drachtio: DrachtioConfig;
   rtp: RtpConfig;
   openai: OpenAIConfig;
-  recording: RecordingConfig;
   transcription: TranscriptionConfig;
   testAudio: TestAudioConfig;
   aiAudio: AIAudioConfig;
+  recording: RecordingConfig;
   environment: string;
   logLevel: "trace" | "debug" | "info" | "warn" | "error";
 }
@@ -95,8 +99,6 @@ export interface EnvironmentVariables {
   OPENAI_AGENT_NAME?: string;
   OPENAI_AGENT_INSTRUCTIONS?: string;
   
-  CALL_RECORDING_ENABLED?: string;
-  CALL_RECORDINGS_PATH?: string;
   
   TRANSCRIPTION_ENABLED?: string;
   TRANSCRIPTION_MODEL?: string;
@@ -104,6 +106,13 @@ export interface EnvironmentVariables {
   
   TEST_AUDIO_TEMPO?: string;
   AI_AUDIO_TEMPO?: string;
+  
+  RECORDING_ENABLED?: string;
+  RECORDING_FORMAT?: string;
+  RECORDING_DIRECTORY?: string;
+  RECORDING_CHANNEL_MODE?: string;
+  RECORDING_INCLUDE_METADATA?: string;
+  RECORDING_FILENAME_PREFIX?: string;
   
   NODE_ENV?: string;
   LOG_LEVEL?: string;

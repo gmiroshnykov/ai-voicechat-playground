@@ -1,10 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import { Logger } from '../utils/logger';
 import { CodecType } from './types';
 import { CodecHandler } from './CodecHandler';
 import { 
-  CODEC_SILENCE_VALUES, 
   AUDIO_CONSTANTS 
 } from '../constants';
 
@@ -17,8 +14,6 @@ export interface OpenAIAudioSourceManagerConfig {
   };
   logger: Logger;
   sessionId: string;
-  recordingsPath?: string; // Path to save raw OpenAI audio
-  callDirectory?: string; // Call-specific directory (same as conversation.wav)
 }
 
 /**
@@ -43,12 +38,9 @@ export class OpenAIAudioSourceManager {
   private audioQueue: Buffer[] = [];
   private isCallActive: boolean = true;
   
-  // Raw OpenAI audio recording
-  private rawAudioFile?: fs.WriteStream;
-  private rawAudioPath?: string;
-  
   // Timing constants
   private readonly CHUNK_SIZE = AUDIO_CONSTANTS.G711_FRAME_SIZE; // 20ms chunks for G.711
+  private readonly MAX_BUFFER_SIZE = 8000; // 1 second of audio at 8kHz to prevent unbounded growth
   
   constructor(config: OpenAIAudioSourceManagerConfig) {
     this.config = config;
@@ -68,11 +60,6 @@ export class OpenAIAudioSourceManager {
     this.audioBuffer = Buffer.alloc(0);
     this.audioQueue = [];
     this.isCallActive = true;
-    
-    // Initialize raw OpenAI audio recording if path is provided
-    if (this.config.recordingsPath) {
-      await this.initializeRawAudioRecording();
-    }
   }
   
   /**
@@ -105,13 +92,27 @@ export class OpenAIAudioSourceManager {
    * This is called when OpenAI sends audio delta events
    */
   public addOpenAIAudio(audioBuffer: Buffer): void {
-    // Save raw OpenAI audio immediately before any processing
-    if (this.rawAudioFile && audioBuffer.length > 0) {
-      this.rawAudioFile.write(audioBuffer);
-      this.logger.trace('Wrote raw OpenAI audio to file', {
+    // Check buffer size before adding to prevent unbounded growth
+    if (this.audioBuffer.length + audioBuffer.length > this.MAX_BUFFER_SIZE) {
+      this.logger.warn('Audio buffer near capacity, processing oldest data first', {
         sessionId: this.config.sessionId,
-        bytesWritten: audioBuffer.length
+        currentSize: this.audioBuffer.length,
+        incomingSize: audioBuffer.length,
+        maxSize: this.MAX_BUFFER_SIZE
       });
+      
+      // Extract any complete packets first to make space
+      this.extractCompletePackets();
+      
+      // If still too large, drop oldest data
+      if (this.audioBuffer.length + audioBuffer.length > this.MAX_BUFFER_SIZE) {
+        const dropSize = this.audioBuffer.length + audioBuffer.length - this.MAX_BUFFER_SIZE;
+        this.audioBuffer = this.audioBuffer.subarray(dropSize);
+        this.logger.warn('Dropped audio data due to buffer overflow', {
+          sessionId: this.config.sessionId,
+          droppedBytes: dropSize
+        });
+      }
     }
     
     // Append to continuous buffer
@@ -148,33 +149,19 @@ export class OpenAIAudioSourceManager {
    * End the call - process any remaining audio in buffer
    */
   public endCall(): void {
-    // Process any remaining audio in the buffer
+    // Discard any remaining partial audio in the buffer to prevent corruption
     if (this.audioBuffer.length > 0) {
-      const paddedChunk = Buffer.alloc(this.CHUNK_SIZE);
-      this.audioBuffer.copy(paddedChunk);
-      // Fill remainder with codec-appropriate silence
-      const silenceValue = this.config.codec.name === CodecType.PCMU ? CODEC_SILENCE_VALUES.PCMU : CODEC_SILENCE_VALUES.PCMA;
-      paddedChunk.fill(silenceValue, this.audioBuffer.length);
-      this.audioQueue.push(paddedChunk);
-      
-      this.logger.trace('Processed final partial audio chunk', {
+      this.logger.debug('Discarding partial audio chunk at call end to prevent corruption', {
         sessionId: this.config.sessionId,
-        originalSize: this.audioBuffer.length,
-        paddedSize: this.CHUNK_SIZE
+        discardedBytes: this.audioBuffer.length
       });
+      
+      // Clear the buffer to prevent memory leaks
+      this.audioBuffer.fill(0);
+      this.audioBuffer = Buffer.alloc(0);
     }
     
     this.isCallActive = false;
-    
-    // Close raw audio file
-    if (this.rawAudioFile) {
-      this.rawAudioFile.end();
-      this.rawAudioFile = undefined;
-      this.logger.info('Closed raw OpenAI audio file', {
-        sessionId: this.config.sessionId,
-        filePath: this.rawAudioPath
-      });
-    }
     
     this.logger.info('OpenAI audio source manager: call ended', {
       sessionId: this.config.sessionId,
@@ -218,36 +205,6 @@ export class OpenAIAudioSourceManager {
       
       // Remove the extracted packet from the buffer
       this.audioBuffer = this.audioBuffer.subarray(this.CHUNK_SIZE);
-    }
-  }
-  
-  /**
-   * Initialize raw OpenAI audio recording
-   */
-  private async initializeRawAudioRecording(): Promise<void> {
-    if (!this.config.recordingsPath || !this.config.callDirectory) {
-      return;
-    }
-    
-    try {
-      // Use the same directory as conversation.wav
-      const callDir = this.config.callDirectory;
-      
-      // Create raw audio file path in the same directory
-      this.rawAudioPath = path.join(callDir, 'openai-raw.g711');
-      
-      // Create write stream for raw G.711 audio
-      this.rawAudioFile = fs.createWriteStream(this.rawAudioPath);
-      
-      this.logger.info('Initialized raw OpenAI audio recording', {
-        sessionId: this.config.sessionId,
-        filePath: this.rawAudioPath,
-        codec: this.config.codec.name
-      });
-      
-    } catch (error) {
-      this.logger.error('Failed to initialize raw OpenAI audio recording', error);
-      throw error;
     }
   }
 }
