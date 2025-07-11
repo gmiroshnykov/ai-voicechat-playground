@@ -8,7 +8,7 @@ import { AudioToRtpStream, AudioToRtpStreamConfig } from './AudioToRtpStream';
 import { JitterBufferTransform, JitterBufferTransformConfig } from './JitterBufferTransform';
 import { TempoAdjustTransform, TempoAdjustTransformConfig } from './TempoAdjustTransform';
 import { createPassThrough } from './StreamUtils';
-import { RtpSessionConfig, CodecType } from './types';
+import { RtpSessionConfig, CodecType, TimestampedAudioChunk } from './types';
 import { OPENAI_AGENT_INSTRUCTIONS, OPENAI_AGENT_NAME, TranscriptionConfig, RecordingConfig } from '../config/types';
 import { TranscriptionManager, TranscriptEntry } from './TranscriptionManager';
 import { RtpContinuousScheduler, RtpContinuousSchedulerConfig } from './RtpContinuousScheduler';
@@ -261,32 +261,14 @@ export class RtpBridgeSessionStream extends RtpSession {
       throw new Error('Stream components not initialized');
     }
 
+    // Set up timestamp-preserving recording tap BEFORE jitter buffer
+    if (this.bridgeConfig.recordingConfig?.enabled) {
+      this.setupTimestampedRecording();
+    }
+
     // Create the main processing pipeline
     let currentStream: NodeJS.ReadWriteStream = this.rtpToAudioStream
       .pipe(this.jitterBufferTransform); // RtpPacketInfo -> Buffer
-
-    // If recording is enabled, set up inbound recording tee
-    if (this.bridgeConfig.recordingConfig?.enabled && this.inboundTeeStream) {
-      currentStream = currentStream.pipe(this.inboundTeeStream);
-      
-      // Connect recording outputs to the tee stream
-      if (this.inboundRecorder) {
-        this.inboundTeeStream.addOutput(this.inboundRecorder);
-      }
-      
-      if (this.stereoRecorder) {
-        // Create a transform stream to add channel information for stereo recorder
-        const { Transform } = await import('stream');
-        const stereoInboundTransform = new Transform({
-          objectMode: true,
-          transform: (chunk: Buffer, _encoding, callback) => {
-            this.stereoRecorder!.writeInboundAudio(chunk);
-            callback();
-          }
-        });
-        this.inboundTeeStream.addOutput(stereoInboundTransform);
-      }
-    }
 
     // Create OpenAI forwarding stream (never blocked)
     const openaiStream = createPassThrough();
@@ -302,6 +284,37 @@ export class RtpBridgeSessionStream extends RtpSession {
     this.logger.debug('Stream pipeline connected successfully', {
       jitterBufferMs: this.bridgeConfig.jitterBufferMs ?? 60,
       recordingEnabled: this.bridgeConfig.recordingConfig?.enabled || false
+    });
+  }
+
+  private setupTimestampedRecording(): void {
+    if (!this.rtpToAudioStream) {
+      return;
+    }
+
+    // Create a recording tap that preserves RTP timestamps
+    this.rtpToAudioStream.on('data', (rtpPacketInfo: any) => {
+      // Create timestamped chunk for inbound audio
+      const timestampedChunk: TimestampedAudioChunk = {
+        audio: rtpPacketInfo.payload,
+        rtpTimestamp: rtpPacketInfo.timestamp,
+        wallClockTime: Date.now(),
+        direction: 'inbound',
+        sequenceNumber: rtpPacketInfo.sequenceNumber
+      };
+
+      // Send to recording streams
+      if (this.inboundRecorder) {
+        this.inboundRecorder.writeTimestampedAudio(timestampedChunk);
+      }
+
+      if (this.stereoRecorder) {
+        this.stereoRecorder.writeTimestampedAudio(timestampedChunk);
+      }
+    });
+
+    this.logger.debug('Timestamp-preserving recording tap set up for inbound audio', {
+      sessionId: this.config.sessionId
     });
   }
 
@@ -371,6 +384,7 @@ export class RtpBridgeSessionStream extends RtpSession {
           filePath: `${callDirectory}/stereo.${recordingConfig.format}`,
           codec: this.config.codec,
           sessionId,
+          jitterBufferDelayMs: this.bridgeConfig.jitterBufferMs ?? 60,
           logger: this.logger
         };
         
@@ -673,12 +687,23 @@ export class RtpBridgeSessionStream extends RtpSession {
   private sendAudioPacket(payload: Buffer, _isAudioDataAvailable: boolean = false): void {
     // Record the complete outbound audio stream (includes silence, comfort noise, proper timing)
     if (this.bridgeConfig.recordingConfig?.enabled) {
+      // Calculate RTP timestamp for outbound audio
+      // This should match the timestamp that will be used by AudioToRtpStream
+      const rtpTimestamp = this.calculateOutboundRtpTimestamp();
+      
+      const timestampedChunk: TimestampedAudioChunk = {
+        audio: payload,
+        rtpTimestamp: rtpTimestamp,
+        wallClockTime: Date.now(),
+        direction: 'outbound',
+      };
+
       if (this.outboundRecorder) {
-        this.outboundRecorder.write(payload);
+        this.outboundRecorder.writeTimestampedAudio(timestampedChunk);
       }
       
       if (this.stereoRecorder) {
-        this.stereoRecorder.writeOutboundAudio(payload);
+        this.stereoRecorder.writeTimestampedAudio(timestampedChunk);
       }
     }
 
@@ -686,6 +711,27 @@ export class RtpBridgeSessionStream extends RtpSession {
     if (this.audioToRtpStream) {
       this.audioToRtpStream.write(payload);
     }
+  }
+
+  private outboundRtpTimestamp: number = 0;
+  private lastOutboundPacketTime: number = 0;
+
+  private calculateOutboundRtpTimestamp(): number {
+    const now = Date.now();
+    
+    if (this.lastOutboundPacketTime === 0) {
+      // First packet - initialize timestamp
+      this.outboundRtpTimestamp = Math.floor(Math.random() * 0xFFFFFFFF);
+      this.lastOutboundPacketTime = now;
+    } else {
+      // Calculate timestamp increment based on time elapsed
+      const timeElapsedMs = now - this.lastOutboundPacketTime;
+      const samplesElapsed = Math.floor((timeElapsedMs / 1000) * this.config.codec.clockRate);
+      this.outboundRtpTimestamp = (this.outboundRtpTimestamp + samplesElapsed) & 0xFFFFFFFF;
+      this.lastOutboundPacketTime = now;
+    }
+    
+    return this.outboundRtpTimestamp;
   }
 
   private async initializeOpenAIConnection(): Promise<void> {

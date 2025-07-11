@@ -2,7 +2,7 @@ import { Writable } from 'stream';
 import { createWriteStream, WriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname } from 'path';
-import { CodecInfo } from './types';
+import { CodecInfo, TimestampedAudioChunk } from './types';
 import { Logger } from '../utils/logger';
 import { getBitsPerSample, convertAudioData } from './AudioCodecUtils';
 import { writeWavHeaderToStream, finalizeWavHeader, WavHeaderConfig } from './WavFileUtils';
@@ -23,9 +23,11 @@ export class ChannelRecorderStream extends Writable {
   private bytesWritten = 0;
   private sampleRate: number;
   private bitsPerSample: number;
+  private firstTimestamp?: number;
+  private lastTimestamp?: number;
 
   constructor(config: ChannelRecorderStreamConfig) {
-    super({ objectMode: false });
+    super({ objectMode: true }); // Accept TimestampedAudioChunk objects
     this.config = config;
     this.logger = config.logger || {
       trace: console.trace.bind(console),
@@ -108,7 +110,7 @@ export class ChannelRecorderStream extends Writable {
 
 
 
-  async _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): Promise<void> {
+  async _write(chunk: TimestampedAudioChunk, _encoding: BufferEncoding, callback: (error?: Error | null) => void): Promise<void> {
     try {
       if (!this.fileStream) {
         await this.createFileStream();
@@ -118,7 +120,13 @@ export class ChannelRecorderStream extends Writable {
         this.writeWavHeader();
       }
       
-      const convertedAudio = convertAudioData(chunk, this.config.codec);
+      // Track timing information for debugging
+      if (!this.firstTimestamp) {
+        this.firstTimestamp = chunk.rtpTimestamp;
+      }
+      this.lastTimestamp = chunk.rtpTimestamp;
+      
+      const convertedAudio = convertAudioData(chunk.audio, this.config.codec);
       this.fileStream!.write(convertedAudio);
       this.bytesWritten += convertedAudio.length;
       
@@ -156,6 +164,10 @@ export class ChannelRecorderStream extends Writable {
   }
 
 
+  public writeTimestampedAudio(chunk: TimestampedAudioChunk): void {
+    this.write(chunk);
+  }
+
   public getStats() {
     return {
       filePath: this.config.filePath,
@@ -163,7 +175,9 @@ export class ChannelRecorderStream extends Writable {
       bytesWritten: this.bytesWritten,
       wavHeaderWritten: this.wavHeaderWritten,
       sampleRate: this.sampleRate,
-      bitsPerSample: this.bitsPerSample
+      bitsPerSample: this.bitsPerSample,
+      firstTimestamp: this.firstTimestamp,
+      lastTimestamp: this.lastTimestamp
     };
   }
 }

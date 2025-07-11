@@ -83,3 +83,11 @@ export interface RecordingConfig {
   includeMetadata?: boolean;
   filenamePrefix?: string;
 }
+
+export interface TimestampedAudioChunk {
+  audio: Buffer;
+  rtpTimestamp: number;
+  wallClockTime: number;
+  direction: 'inbound' | 'outbound';
+  sequenceNumber?: number;
+}
