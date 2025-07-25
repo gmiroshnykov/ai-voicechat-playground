@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firefly
+  labels:
+    app: firefly
+    {{- range $key, $value := .Values.globalLabels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firefly
+  template:
+    metadata:
+      labels:
+        app: firefly
+        {{- range $key, $value := .Values.globalLabels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+    spec:
+      hostNetwork: {{ .Values.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: firefly
+        image: {{ .Values.fireflyImageRepository }}:{{ .Values.fireflyImageTag }}
+        imagePullPolicy: {{ .Values.fireflyImagePullPolicy }}
+        command: ["node", "dist/index.js", "--mode", {{ .Values.fireflyMode | quote }}]
+        envFrom:
+        - configMapRef:
+            name: firefly-config
+        - secretRef:
+            name: firefly-secrets
+        volumeMounts:
+        - name: recordings
+          mountPath: {{ .Values.recordingPath }}
+        resources:
+          requests:
+            memory: {{ .Values.fireflyResourcesRequestsMemory | quote }}
+            cpu: {{ .Values.fireflyResourcesRequestsCpu | quote }}
+          limits:
+            memory: {{ .Values.fireflyResourcesLimitsMemory | quote }}
+            cpu: {{ .Values.fireflyResourcesLimitsCpu | quote }}
+        {{- if .Values.healthCheckEnabled }}
+        # Health checks - TCP probe for drachtio connection
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.healthCheckDrachtioPort }}
+          initialDelaySeconds: {{ .Values.healthCheckInitialDelaySeconds }}
+          periodSeconds: {{ .Values.healthCheckPeriodSeconds }}
+          timeoutSeconds: {{ .Values.healthCheckTimeoutSeconds }}
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.healthCheckDrachtioPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        {{- end }}
+      volumes:
+      - name: recordings
+        {{- if .Values.persistenceEnabled }}
+        persistentVolumeClaim:
+          claimName: firefly-recordings
+        {{- else }}
+        emptyDir: {}
+        {{- end }}

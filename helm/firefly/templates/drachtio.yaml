@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: drachtio
+  labels:
+    app: drachtio
+    {{- range $key, $value := .Values.globalLabels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  serviceName: drachtio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drachtio
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: drachtio
+        {{- range $key, $value := .Values.globalLabels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+    spec:
+      hostNetwork: {{ .Values.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: drachtio
+        image: {{ .Values.drachtioImageRepository }}:{{ .Values.drachtioImageTag }}
+        imagePullPolicy: {{ .Values.drachtioImagePullPolicy }}
+        command:
+        - drachtio
+        - --contact
+        - "sip:*:$(DRACHTIO_SIP_PORT);transport=udp"
+        - --loglevel
+        - {{ .Values.drachtioLogLevel }}
+        {{- if .Values.homerEnabled }}
+        - --homer
+        - "{{ .Values.homerHost }}:{{ .Values.homerPort }}"
+        - --homer-id
+        - {{ .Values.homerId | quote }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: firefly-config
+        - secretRef:
+            name: firefly-secrets
+        resources:
+          requests:
+            memory: {{ .Values.drachtioResourcesRequestsMemory | quote }}
+            cpu: {{ .Values.drachtioResourcesRequestsCpu | quote }}
+          limits:
+            memory: {{ .Values.drachtioResourcesLimitsMemory | quote }}
+            cpu: {{ .Values.drachtioResourcesLimitsCpu | quote }}

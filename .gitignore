@@ -4,6 +4,9 @@ node_modules/
 # Environment and secrets
 .envrc.local
 
+# Helm values with secrets (gitignored)
+helm/*/values.local.yaml
+
 # System files
 .DS_Store
 tmp/

@@ -1,0 +1,34 @@
+# Local development values - copy to values.local.yaml and customize
+# This file should be gitignored and contains secrets and local overrides
+
+# OpenAI API configuration
+openaiApiKey: "sk-your-actual-openai-key-here"
+
+# Drachtio server secret
+drachtioSecret: "your-drachtio-secret"
+
+# SIP provider credentials (if using kyivstar or other providers)
+sipPassword: "your-sip-password"
+# For kyivstar provider, uncomment and set:
+# sipProvider: "kyivstar"
+# sipDomain: "sbc-sei2.kyivstar.ua"
+# sipPort: 5060
+
+# Local IP configuration (auto-detected by default)
+# If you need to override the local IP detection:
+# localIp: "192.168.1.100"
+
+# Development-specific audio settings
+audioTestTempo: 1.0
+audioAiTempo: 1.0
+
+# Development logging
+drachtioLogLevel: info
+
+# Generic environment variables from .envrc
+# Add any additional env vars here instead of hardcoding them
+# env:
+  # Override any defaults from values.yaml here
+  # NODE_ENV: production
+  # LOG_LEVEL: info
+  # SOME_DEBUG_FLAG: "true"

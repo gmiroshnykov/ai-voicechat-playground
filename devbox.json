@@ -2,6 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.14.2/.schema/devbox.schema.json",
   "packages": [
     "nodejs@latest",
-    "sox@latest"
+    "sox@latest",
+    "tilt@latest",
+    "sipsak@latest",
+    "minikube@latest",
+    "gettext@latest"
   ]
 }

@@ -1,3 +1,5 @@
+- At the beginning of each session, make sure we're running in a devbox shell by checking that "DEVBOX_SHELL_ENABLED=1" environment variable is set. If it's not set, prompt the user to exit `claude` CLI, run `devbox shell` and then run `claude` again.
+- In case you'd like to install a software package, please use `devbox search` to find it (in nixpkgs) and `devbox add` to install it.
 - Use context7 when looking up API docs
 - Never use whisper-1 model
 - The 'web' and 'server-go' components of this project will only ever run on localhost.

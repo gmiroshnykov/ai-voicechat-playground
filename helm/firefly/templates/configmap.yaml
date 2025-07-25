@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: firefly-config
+  labels:
+    {{- range $key, $value := .Values.globalLabels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+data:
+  # Drachtio connection
+  DRACHTIO_HOST: {{ .Values.drachtioHost | quote }}
+  DRACHTIO_PORT: {{ .Values.drachtioPort | quote }}
+  DRACHTIO_SIP_PORT: {{ .Values.drachtioSipPort | quote }}
+  
+  # SIP configuration (public settings)
+  SIP_PROVIDER: {{ .Values.sipProvider | quote }}
+  SIP_DOMAIN: {{ .Values.sipDomain | quote }}
+  SIP_USERNAME: {{ .Values.sipUsername | quote }}
+  SIP_PORT: {{ .Values.sipPort | quote }}
+  
+  # RTP configuration
+  RTP_PORT_MIN: {{ .Values.rtpPortMin | quote }}
+  RTP_PORT_MAX: {{ .Values.rtpPortMax | quote }}
+  JITTER_BUFFER_MS: {{ .Values.rtpJitterBufferMs | quote }}
+  
+  # Recording configuration
+  CALL_RECORDING_ENABLED: {{ .Values.recordingEnabled | quote }}
+  CALL_RECORDINGS_PATH: {{ .Values.recordingPath | quote }}
+  
+  # Transcription configuration
+  TRANSCRIPTION_ENABLED: {{ .Values.transcriptionEnabled | quote }}
+  TRANSCRIPTION_MODEL: {{ .Values.transcriptionModel | quote }}
+  TRANSCRIPTION_DISPLAY_TO_CONSOLE: {{ .Values.transcriptionDisplayToConsole | quote }}
+  
+  # Audio configuration
+  TEST_AUDIO_TEMPO: {{ .Values.audioTestTempo | quote }}
+  AI_AUDIO_TEMPO: {{ .Values.audioAiTempo | quote }}
+  
+  # Network configuration
+  LOCAL_IP: {{ .Values.localIp | quote }}
+  
+  # Generic environment variables
+  {{- range $key, $value := .Values.env }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
