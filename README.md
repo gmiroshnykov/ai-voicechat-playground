@@ -6,11 +6,13 @@ An experimental VoIP system that bridges telephone calls to OpenAI's Realtime AP
 
 - **Direct SIP Registration:** Built-in SIP registrar accepting client registrations (Linphone, softphones)
 - **PSTN-to-AI Bridge:** Direct telephone calls to OpenAI Realtime API (experimental)
-- **Advanced VoIP Handling:** SIP/RTP with NAT traversal, jitter buffer, packet loss recovery
-- **Call Recording:** Stereo audio recording with metadata storage
+- **Stream-Based Audio Pipeline:** Node.js Transform streams for composable real-time audio processing
+- **Adaptive RTP Scheduling:** Buffer-depth based packet scheduling (not fixed timing) for optimal flow control
+- **Advanced Jitter Buffer:** Packet reordering, loss recovery, and comfort noise generation
+- **Call Recording:** Timestamp-synchronized stereo recording with RTP metadata preservation
 - **Call Context Preservation:** Caller ID and call metadata extraction (via Diversion headers)
-- **Multi-Provider Support:** Direct SIP mode, Kyivstar, or external VoIP providers
-- **Research-Grade Implementation:** Sophisticated packet handling and audio processing
+- **Multi-Provider Support:** Direct SIP mode, Kyivstar, or external VoIP providers with symmetric RTP support
+- **Audio Processing Features:** AI tempo adjustment, codec negotiation, and NAT traversal
 
 *Note: Multi-tenant routing and production reliability features are designed but require further testing with real carrier deployments.*
 
@@ -18,38 +20,40 @@ An experimental VoIP system that bridges telephone calls to OpenAI's Realtime AP
 
 ### Prerequisites
 
-- Node.js 18+
-- Docker and Docker Compose
+- Devbox (handles dependencies via Nix)
+- Kubernetes (Docker Desktop or minikube)
 - OpenAI API Key (for AI chat features)
-- SIP client (Linphone, softphone) for testing direct mode
+- SIP client (Linphone, softphone) for testing
 
-### Basic Setup
+### Setup
 
 ```bash
 git clone https://github.com/gmiroshnykov/ai-voicechat-playground.git
 cd ai-voicechat-playground
 
-# Use devbox for consistent environment (recommended)
+# Use devbox for consistent environment
 devbox shell
 
 # Set up environment variables
-cp firefly/.env.example firefly/.env
-# Edit firefly/.env and add your OPENAI_API_KEY
+cp .envrc.local.example .envrc.local
+# Edit .envrc.local and add your OPENAI_API_KEY
 
-# Start the complete stack (Drachtio + Firefly)
-docker-compose up --build
+# Start the development environment
+tilt up
 ```
 
 ## Components
 
 ### Firefly VoIP Service ([firefly/](firefly/))
 The main experimental VoIP service - TypeScript-based SIP server with built-in registrar:
+- **Stream-Based Architecture:** Composable audio processing pipeline using Node.js Transform streams
 - **Direct SIP Registration:** Accepts registrations from SIP clients (no external PBX needed)
-- **Multi-Provider Support:** Direct mode, Kyivstar VoIP, or external SIP providers
-- **OpenAI Integration:** Real-time AI conversation bridging
-- **Advanced Audio:** G.711 PCMA/PCMU, OPUS support with jitter buffer
-- **Call Recording:** Stereo audio recording with metadata
-- **NAT Traversal:** RTP latching and RTCP support
+- **Multi-Provider Support:** Direct mode, Kyivstar VoIP, or external SIP providers with symmetric RTP
+- **OpenAI Integration:** Real-time AI conversation bridging with tempo adjustment
+- **Advanced Audio Processing:** G.711 PCMA/PCMU, OPUS support with adaptive jitter buffer and packet loss recovery
+- **Intelligent RTP Scheduling:** Buffer-depth based adaptive scheduling for optimal audio flow
+- **Call Recording:** Timestamp-synchronized stereo recording with complete metadata
+- **NAT Traversal:** RTP latching, symmetric RTP support, and RTCP handling
 
 ### Drachtio SIP Server
 High-performance SIP server handling protocol operations:
@@ -79,11 +83,12 @@ PSTN/Mobile Phone → VoIP Provider (Kyivstar) → Firefly (TypeScript) → Open
 
 ### Directory Structure
 ```
-firefly-voip-platform/
-├── firefly/              # Main VoIP service with SIP registrar
+ai-voicechat-playground/
+├── firefly/              # Main VoIP service (TypeScript)
 ├── audio/                # Test audio files
-├── recordings/           # Call recordings (generated)
-└── docker-compose.yml    # Drachtio + Firefly services
+├── helm/                 # Kubernetes deployment with Helm
+├── utils/                # Go-based echo servers for testing
+└── Tiltfile             # Development environment with Tilt
 ```
 
 ## Usage Patterns
@@ -103,8 +108,10 @@ firefly-voip-platform/
 **Testing Modes:**
 - `--mode chat`: Bridge calls to OpenAI Realtime API for AI conversations
 - `--mode echo`: Audio echo testing for debugging RTP/codec issues
-- G.711 PCMA/PCMU direct passthrough for minimal latency
-- AI agent starts in Ukrainian, switches to English when prompted
+- Extension `123`: Test audio playback with tempo adjustment support for codec/timing validation
+- Built-in silence generation and comfort noise for packet loss scenarios
+- Comprehensive RTP statistics and jitter buffer monitoring
+- G.711 PCMA/PCMU support for minimal latency
 
 ## Documentation
 
@@ -114,24 +121,11 @@ firefly-voip-platform/
 
 ## Development
 
-**Docker Development (Recommended):**
 ```bash
 devbox shell
-docker-compose up --build  # Starts Drachtio + Firefly
-```
+tilt up  # Starts complete stack with live reload
 
-**Local Development:**
-```bash
-devbox shell
-
-# Start Drachtio server
-docker-compose up drachtio
-
-# In separate terminal, run Firefly locally
-cd firefly
-npm install
-npm run build
-npm start -- --mode chat  # or --mode echo for testing
+# View Tilt web UI at http://localhost:10350
 ```
 
 ## Current Status
@@ -144,6 +138,7 @@ This project implements a complete SIP-to-AI bridge with both direct registratio
 - ✅ **Call recording and metadata extraction** 
 - ✅ **Multi-provider architecture** supporting direct, Kyivstar, and external modes
 - ✅ **Docker deployment** with service orchestration
+- ✅ **Kubernetes deployment** with Helm charts and Tilt integration
 - ⚠️ **Not yet validated**: Multi-tenant routing in production carrier environments
 - ⚠️ **Not yet validated**: Concurrent call handling under real load
 - ⚠️ **Not yet validated**: Production reliability and error recovery with real users

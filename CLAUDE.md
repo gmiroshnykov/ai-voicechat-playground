@@ -1,7 +1,42 @@
-- At the beginning of each session, make sure we're running in a devbox shell by checking that "DEVBOX_SHELL_ENABLED=1" environment variable is set. If it's not set, prompt the user to exit `claude` CLI, run `devbox shell` and then run `claude` again.
-- In case you'd like to install a software package, please use `devbox search` to find it (in nixpkgs) and `devbox add` to install it.
-- Use context7 when looking up API docs
-- Never use whisper-1 model
-- The 'web' and 'server-go' components of this project will only ever run on localhost.
-- We're using `direnv` for managing environment variables, so "public" things go into .envrc and "secret"/"private" things go into .envrc.local
-- Never try to turn Node.js into a hard-real-time system. Accept that setTimeout() et al will drift and work around it with algorithms, not trying to make timers more precise.
+# CLAUDE.md
+
+This file provides guidance to Claude Code when working with this VoIP-to-AI bridge codebase.
+
+## Development Commands
+
+- `tilt up` - Start complete development environment with Kubernetes/Helm
+- `tilt down` - Stop development environment  
+- `k` (kubectl alias) - Kubernetes operations
+- `devbox add <package>` - Install software packages via nixpkgs
+
+## Environment Setup
+
+- Public config: `.envrc`
+- Private/secrets: `.envrc.local` (gitignored)
+- Uses direnv for environment management
+
+## Critical Technical Constraints
+
+- **Never try to make Node.js real-time.** Accept that setTimeout() will drift and work around it with adaptive algorithms instead of precision timing.
+- **Use stream-based processing.** The system uses Node.js Transform streams for the audio pipeline.
+- **Use adaptive RTP scheduling.** Packets are scheduled based on buffer depth, not fixed timing intervals.
+- **Let errors bubble up** unless you can meaningfully handle them (retries, fallbacks, adding context).
+- **Avoid generic try/catch blocks** that only log errors. Either add meaningful context or let them bubble up.
+
+## Testing Modes
+
+- `--mode echo` - Use this for audio/RTP debugging without OpenAI dependency
+- Extension `123` - Triggers test audio playback for codec validation
+- Other extensions - Start AI conversations with OpenAI Realtime API
+
+## API Integration Rules
+
+- Use context7 when looking up API documentation
+- Never use the whisper-1 model for transcription
+- The system is designed to run on localhost only
+
+## Key Directories
+
+- `firefly/src/rtp/` - Audio processing pipeline
+- `firefly/src/sip/` - SIP protocol handling  
+- `helm/firefly/` - Kubernetes deployment
