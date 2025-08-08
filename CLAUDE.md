@@ -7,13 +7,10 @@ This file provides guidance to Claude Code when working with this VoIP-to-AI bri
 - `tilt up` - Start complete development environment with Kubernetes/Helm
 - `tilt down` - Stop development environment  
 - `k` (kubectl alias) - Kubernetes operations
-- `devbox add <package>` - Install software packages via nixpkgs
 
 ## Environment Setup
 
-- Public config: `.envrc`
-- Private/secrets: `.envrc.local` (gitignored)
-- Uses direnv for environment management
+- Environment variables are configured via Kubernetes ConfigMaps and Secrets
 
 ## Critical Technical Constraints
 

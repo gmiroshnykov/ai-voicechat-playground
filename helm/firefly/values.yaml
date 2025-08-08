@@ -90,7 +90,7 @@ openaiApiKey: ""  # Set in values.local.yaml
 drachtioServiceType: ClusterIP
 drachtioServiceClusterIP: None  # Headless service for StatefulSet
 
-# Generic environment variables - allows passing any env vars from .envrc
+# Generic environment variables for application configuration
 # Usage: env.SOME_VAR: "value" gets mapped to SOME_VAR environment variable
 env:
   NODE_ENV: development

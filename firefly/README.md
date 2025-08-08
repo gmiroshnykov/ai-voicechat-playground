@@ -60,7 +60,7 @@ npm run build
 
 ## Configuration
 
-Environment variables are managed by direnv in the project root. Key variables:
+Environment variables for development. Key variables:
 
 ### Core Settings
 - `SIP_PROVIDER`: "freeswitch" (default) or "kyivstar"
@@ -93,7 +93,7 @@ Environment variables are managed by direnv in the project root. Key variables:
 
 **Kyivstar (Production)**:
 - Set `SIP_PROVIDER="kyivstar"`
-- Configure credentials in `.envrc.local`
+- Configure credentials via Kubernetes Secrets
 
 ## Running
 

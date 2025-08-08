@@ -9,7 +9,7 @@ This directory contains sample audio files for testing the voice chat and playba
 
 ## Converting WAV to RAW
 
-To convert a WAV file to raw PCM format, use the `sox` command (already included in the devbox environment):
+To convert a WAV file to raw PCM format, use the `sox` command:
 
 ```bash
 # Basic conversion (uses WAV file's original format)

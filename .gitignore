@@ -11,8 +11,6 @@ helm/*/values.local.yaml
 .DS_Store
 tmp/
 
-# Dev tools
-.devbox/
 
 # Next.js
 web/.next/

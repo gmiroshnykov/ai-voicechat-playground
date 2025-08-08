@@ -20,7 +20,6 @@ An experimental VoIP system that bridges telephone calls to OpenAI's Realtime AP
 
 ### Prerequisites
 
-- Devbox (handles dependencies via Nix)
 - Kubernetes (Docker Desktop or minikube)
 - OpenAI API Key (for AI chat features)
 - SIP client (Linphone, softphone) for testing
@@ -30,13 +29,6 @@ An experimental VoIP system that bridges telephone calls to OpenAI's Realtime AP
 ```bash
 git clone https://github.com/gmiroshnykov/ai-voicechat-playground.git
 cd ai-voicechat-playground
-
-# Use devbox for consistent environment
-devbox shell
-
-# Set up environment variables
-cp .envrc.local.example .envrc.local
-# Edit .envrc.local and add your OPENAI_API_KEY
 
 # Start the development environment
 tilt up
@@ -122,7 +114,6 @@ ai-voicechat-playground/
 ## Development
 
 ```bash
-devbox shell
 tilt up  # Starts complete stack with live reload
 
 # View Tilt web UI at http://localhost:10350
@@ -148,7 +139,7 @@ The technical implementation follows production design principles but requires c
 ## Security Notes
 
 - Never commit credentials or API keys to version control
-- Use `.envrc.local` for sensitive configuration (VoIP provider credentials)
+- Use Kubernetes Secrets for sensitive configuration (VoIP provider credentials)
 - Call recordings may contain sensitive information - secure appropriately
 - ⚠️ **Research Use**: Not yet security-audited for production deployment
 
