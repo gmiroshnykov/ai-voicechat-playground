@@ -12,11 +12,18 @@ data:
   DRACHTIO_PORT: {{ .Values.drachtioPort | quote }}
   DRACHTIO_SIP_PORT: {{ .Values.drachtioSipPort | quote }}
   
-  # SIP configuration (public settings)
-  SIP_PROVIDER: {{ .Values.sipProvider | quote }}
-  SIP_DOMAIN: {{ .Values.sipDomain | quote }}
-  SIP_USERNAME: {{ .Values.sipUsername | quote }}
-  SIP_PORT: {{ .Values.sipPort | quote }}
+  # SIP outbound configuration (public settings)
+  SIP_OUTBOUND_PROVIDER: {{ .Values.sipOutbound.provider | quote }}
+  SIP_OUTBOUND_DOMAIN: {{ .Values.sipOutbound.domain | quote }}
+  SIP_OUTBOUND_USERNAME: {{ .Values.sipOutbound.username | quote }}
+  SIP_OUTBOUND_PORT: {{ .Values.sipOutbound.port | quote }}
+  {{- if .Values.sipOutbound.proxy }}
+  SIP_OUTBOUND_PROXY: {{ .Values.sipOutbound.proxy | quote }}
+  {{- end }}
+  
+  # SIP inbound configuration
+  SIP_INBOUND_ENABLED: {{ .Values.sipInbound.enabled | quote }}
+  SIP_INBOUND_PORT: {{ .Values.sipInbound.port | quote }}
   
   # RTP configuration
   RTP_PORT_MIN: {{ .Values.rtpPortMin | quote }}
@@ -38,6 +45,9 @@ data:
   
   # Network configuration
   LOCAL_IP: {{ .Values.localIp | quote }}
+  
+  # OpenAI configuration (public settings)
+  OPENAI_ENABLED: {{ .Values.openaiEnabled | quote }}
   
   # Generic environment variables
   {{- range $key, $value := .Values.env }}

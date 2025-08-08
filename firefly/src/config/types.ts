@@ -1,12 +1,17 @@
-export type SipProvider = "freeswitch" | "kyivstar" | "direct";
+export type SipOutboundProvider = "kyivstar" | "disabled";
 
-export interface SipConfig {
-  provider: SipProvider;
+export interface SipOutboundConfig {
+  provider: SipOutboundProvider;
   domain: string;
   username: string;
   password: string;
   port: number;
   proxyAddress?: string;
+}
+
+export interface SipInboundConfig {
+  enabled: boolean;
+  port: number;
 }
 
 export interface DrachtioConfig {
@@ -64,7 +69,8 @@ Keep responses conversational and brief since this is a phone call. You can hang
 Begin by greeting the caller in Ukrainian and asking how you can help them.`;
 
 export interface AppConfig {
-  sip: SipConfig;
+  sipOutbound: SipOutboundConfig;
+  sipInbound: SipInboundConfig;
   drachtio: DrachtioConfig;
   rtp: RtpConfig;
   openai: OpenAIConfig;
@@ -77,12 +83,15 @@ export interface AppConfig {
 }
 
 export interface EnvironmentVariables {
-  SIP_PROVIDER?: string;
-  SIP_DOMAIN?: string;
-  SIP_USERNAME?: string;
-  SIP_PASSWORD?: string;
-  SIP_PORT?: string;
-  SIP_PROXY?: string;
+  SIP_OUTBOUND_PROVIDER?: string;
+  SIP_OUTBOUND_DOMAIN?: string;
+  SIP_OUTBOUND_USERNAME?: string;
+  SIP_OUTBOUND_PASSWORD?: string;
+  SIP_OUTBOUND_PORT?: string;
+  SIP_OUTBOUND_PROXY?: string;
+  
+  SIP_INBOUND_ENABLED?: string;
+  SIP_INBOUND_PORT?: string;
   
   DRACHTIO_HOST?: string;
   DRACHTIO_PORT?: string;

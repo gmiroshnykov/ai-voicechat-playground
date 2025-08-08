@@ -49,12 +49,19 @@ healthCheckInitialDelaySeconds: 30
 healthCheckPeriodSeconds: 10
 healthCheckTimeoutSeconds: 5
 
-# SIP configuration
-sipProvider: direct  # Options: direct, kyivstar, freeswitch
-sipDomain: localhost
-sipUsername: firefly
-sipPort: 5062
-sipPassword: ""  # Set in values.local.yaml
+# SIP outbound registration configuration
+sipOutbound:
+  provider: disabled  # Options: disabled, kyivstar
+  domain: ""
+  username: ""
+  port: 5060
+  password: ""  # Set in values.local.yaml
+  proxy: ""
+
+# SIP inbound registration configuration (accepts registrations from SIP clients)
+sipInbound:
+  enabled: true
+  port: 5062
 
 # RTP media configuration
 rtpPortMin: 10000
@@ -84,6 +91,7 @@ audioAiTempo: 1.0
 localIp: "127.0.0.1"
 
 # OpenAI configuration
+openaiEnabled: false  # Must be explicitly enabled
 openaiApiKey: ""  # Set in values.local.yaml
 
 # Service configuration

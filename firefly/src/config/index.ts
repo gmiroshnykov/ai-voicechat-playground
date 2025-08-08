@@ -1,4 +1,4 @@
-import { AppConfig, EnvironmentVariables, SipProvider } from './types';
+import { AppConfig, EnvironmentVariables, SipOutboundProvider } from './types';
 
 export * from './types';
 
@@ -21,9 +21,9 @@ function getOptionalEnv(key: keyof EnvironmentVariables, defaultValue: string): 
   return process.env[key] || defaultValue;
 }
 
-function validateSipProvider(provider: string): SipProvider {
-  if (provider !== 'freeswitch' && provider !== 'kyivstar' && provider !== 'direct') {
-    throw new ConfigurationError(`Invalid SIP_PROVIDER: ${provider}. Must be 'freeswitch', 'kyivstar', or 'direct'`);
+function validateSipOutboundProvider(provider: string): SipOutboundProvider {
+  if (provider !== 'kyivstar' && provider !== 'disabled') {
+    throw new ConfigurationError(`Invalid SIP_OUTBOUND_PROVIDER: ${provider}. Must be 'kyivstar' or 'disabled'`);
   }
   return provider;
 }
@@ -65,20 +65,25 @@ function validateBooleanEnv(value: string): boolean {
 
 export function loadConfig(): AppConfig {
   try {
-    const provider = validateSipProvider(getOptionalEnv('SIP_PROVIDER', 'freeswitch'));
+    const outboundProvider = validateSipOutboundProvider(getOptionalEnv('SIP_OUTBOUND_PROVIDER', 'disabled'));
     
-    // Provider-specific defaults
-    const sipDefaults = provider === 'freeswitch' 
-      ? { domain: 'localhost', port: 5060, username: 'firefly', password: 'password' }
-      : { domain: 'sbc-sei2.kyivstar.ua', port: 5060, username: '', password: '' };
+    // Provider-specific defaults for outbound registration
+    const sipOutboundDefaults = outboundProvider === 'kyivstar'
+      ? { domain: 'voip.kyivstar.ua', port: 5060, username: '', password: '' }
+      : { domain: '', port: 5060, username: '', password: '' };
 
-    const sipConfig = {
-      provider,
-      domain: getOptionalEnv('SIP_DOMAIN', sipDefaults.domain),
-      username: provider === 'kyivstar' ? getRequiredEnv('SIP_USERNAME') : getOptionalEnv('SIP_USERNAME', sipDefaults.username),
-      password: provider === 'kyivstar' ? getRequiredEnv('SIP_PASSWORD') : getOptionalEnv('SIP_PASSWORD', sipDefaults.password),
-      port: validatePort(getOptionalEnv('SIP_PORT', sipDefaults.port.toString()), 'SIP_PORT'),
-      proxyAddress: process.env.SIP_PROXY
+    const sipOutboundConfig = {
+      provider: outboundProvider,
+      domain: getOptionalEnv('SIP_OUTBOUND_DOMAIN', sipOutboundDefaults.domain),
+      username: outboundProvider === 'kyivstar' ? getRequiredEnv('SIP_OUTBOUND_USERNAME') : getOptionalEnv('SIP_OUTBOUND_USERNAME', sipOutboundDefaults.username),
+      password: outboundProvider === 'kyivstar' ? getRequiredEnv('SIP_OUTBOUND_PASSWORD') : getOptionalEnv('SIP_OUTBOUND_PASSWORD', sipOutboundDefaults.password),
+      port: validatePort(getOptionalEnv('SIP_OUTBOUND_PORT', sipOutboundDefaults.port.toString()), 'SIP_OUTBOUND_PORT'),
+      proxyAddress: process.env.SIP_OUTBOUND_PROXY
+    };
+
+    const sipInboundConfig = {
+      enabled: validateBooleanEnv(getOptionalEnv('SIP_INBOUND_ENABLED', 'true')),
+      port: validatePort(getOptionalEnv('SIP_INBOUND_PORT', '5062'), 'SIP_INBOUND_PORT')
     };
 
     const drachtioConfig = {
@@ -105,10 +110,10 @@ export function loadConfig(): AppConfig {
       throw new ConfigurationError('JITTER_BUFFER_MS must be between 10 and 200 milliseconds');
     }
 
-    // OpenAI config now depends on having an API key, not a separate enabled flag
+    // OpenAI config requires explicit enabling even when key is present
     const openaiApiKey = process.env.OPENAI_API_KEY || '';
     const openaiConfig = {
-      enabled: openaiApiKey.length > 0,
+      enabled: validateBooleanEnv(getOptionalEnv('OPENAI_ENABLED', 'false')),
       apiKey: openaiApiKey
     };
 
@@ -163,7 +168,8 @@ export function loadConfig(): AppConfig {
     };
 
     const config: AppConfig = {
-      sip: sipConfig,
+      sipOutbound: sipOutboundConfig,
+      sipInbound: sipInboundConfig,
       drachtio: drachtioConfig,
       rtp: rtpConfig,
       openai: openaiConfig,

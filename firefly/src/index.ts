@@ -29,7 +29,8 @@ let sipHandler: SipHandler | undefined;
 async function startApplication(): Promise<void> {
   logger.info('Starting Firefly', {
     environment: config.environment,
-    sipProvider: config.sip.provider,
+    sipOutboundProvider: config.sipOutbound.provider,
+    sipInboundEnabled: config.sipInbound.enabled,
     logLevel: config.logLevel,
     mode: mode
   });
@@ -37,25 +38,28 @@ async function startApplication(): Promise<void> {
   // Connect to drachtio server
   await connectToDrachtio();
 
-  // Initialize SIP components
-  sipInboundRegistrar = new SipInboundRegistrar(srf as any);
+  // Initialize SIP handler
   sipHandler = new SipHandler(srf, rtpManager, config, mode);
 
-  // Handle inbound registration events
-  sipInboundRegistrar.on('user-registered', (username: string, contactUri: string) => {
-    logger.info('SIP client registered', { username, contactUri });
-  });
+  // Start inbound registrar if enabled (accepts registrations from SIP clients)
+  if (config.sipInbound.enabled) {
+    sipInboundRegistrar = new SipInboundRegistrar(srf as any);
+    
+    // Handle inbound registration events
+    sipInboundRegistrar.on('user-registered', (username: string, contactUri: string) => {
+      logger.info('SIP client registered', { username, contactUri });
+    });
 
-  sipInboundRegistrar.on('user-unregistered', (username: string) => {
-    logger.info('SIP client unregistered', { username });
-  });
+    sipInboundRegistrar.on('user-unregistered', (username: string) => {
+      logger.info('SIP client unregistered', { username });
+    });
 
-  // Start inbound registrar (accepts registrations from SIP clients)
-  await sipInboundRegistrar.start();
+    await sipInboundRegistrar.start();
+  }
 
-  // Only start outbound SIP registration if not in direct mode
-  if (config.sip.provider !== 'direct') {
-    sipRegistrar = new SipRegistrar(srf, config.sip, config.drachtio);
+  // Start outbound SIP registration if provider is configured
+  if (config.sipOutbound.provider !== 'disabled') {
+    sipRegistrar = new SipRegistrar(srf, config.sipOutbound, config.drachtio);
     
     // Handle registration events
     sipRegistrar.on('registered', () => {
@@ -75,10 +79,18 @@ async function startApplication(): Promise<void> {
     await sipRegistrar.start();
   }
 
+  const sipEndpoint = config.sipOutbound.provider === 'disabled' 
+    ? 'inbound-only' 
+    : `${config.sipOutbound.username}@${config.sipOutbound.domain}`;
+    
+  const sipMode = [];
+  if (config.sipInbound.enabled) sipMode.push('accepting-registrations');
+  if (config.sipOutbound.provider !== 'disabled') sipMode.push('outbound-registration');
+  
   logger.info('Firefly started successfully', {
-    sipEndpoint: config.sip.provider === 'direct' ? 'direct-sip-server' : `${config.sip.username}@${config.sip.domain}`,
+    sipEndpoint,
     rtpPorts: `${config.rtp.portMin}-${config.rtp.portMax}`,
-    mode: config.sip.provider === 'direct' ? 'accepting-registrations' : 'outbound-registration'
+    mode: sipMode.join(' + ') || 'no-sip-registration'
   });
 }
 

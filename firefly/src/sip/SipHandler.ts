@@ -147,7 +147,7 @@ export class SipHandler {
       const dialog = await this.srf.createUAS(req, res, {
         localSdp: answerSdp,
         headers: {
-          'Contact': `<sip:firefly@${this.config.rtp.localIp}:${this.config.drachtio.sipPort}>`,
+          'Contact': `<sip:firefly@${this.config.rtp.localIp}:${this.config.sipInbound.port}>`,
           'Allow': 'INVITE, ACK, BYE, CANCEL, OPTIONS, MESSAGE, INFO, UPDATE',
           'Supported': 'timer'
         }
