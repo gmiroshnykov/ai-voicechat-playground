@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "lsp": {
+      "command": "mcp-language-server",
+      "args": [
+        "--workspace",
+        "/Users/gmiroshnykov/Projects/ai-voicechat-playground/",
+        "--lsp",
+        "typescript-language-server",
+        "--",
+        "--stdio"
+      ]
+    }
+  }
+}
