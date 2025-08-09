@@ -2,8 +2,9 @@ import * as sdpTransform from 'sdp-transform';
 import { SrfClient, InviteRequest, InviteResponse, Dialog, CallContext, ParsedSdp, ExtractedCodecInfo } from './types';
 import { RtpManager } from '../rtp/RtpManager';
 import { CodecInfo } from '../rtp/types';
-import { AppConfig } from '../config/types';
+import { AppConfig, SessionType } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
+import { RouteResolver } from './routing';
 
 export class SipHandler {
   private readonly srf: SrfClient;
@@ -11,15 +12,15 @@ export class SipHandler {
   private readonly config: AppConfig;
   private readonly logger: Logger;
   private readonly activeDialogs: Map<string, Dialog>;
-  private readonly mode: 'echo' | 'chat';
+  private readonly routeResolver: RouteResolver;
 
-  constructor(srf: SrfClient, rtpManager: RtpManager, config: AppConfig, mode: 'echo' | 'chat' = 'echo') {
+  constructor(srf: SrfClient, rtpManager: RtpManager, config: AppConfig) {
     this.srf = srf;
     this.rtpManager = rtpManager;
     this.config = config;
-    this.mode = mode;
     this.logger = createLogger({ component: 'SipHandler' });
     this.activeDialogs = new Map();
+    this.routeResolver = new RouteResolver(config.routing.defaultRoute);
     
     // Set up INVITE handler
     this.srf.invite(this.handleInvite.bind(this));
@@ -51,20 +52,32 @@ export class SipHandler {
       const offeredCodecs = audioMedia.rtp?.map(rtp => `${rtp.codec}/${rtp.rate}`) || [];
       callLogger.info('Codecs offered', { codecs: offeredCodecs });
 
-      // Check if this is a call to extension 123 (test audio)
-      const toExtension = this.extractPhoneNumber(callContext.to);
-      let sessionType: 'echo' | 'bridge' | 'test_audio' = 'echo';
+      // Resolve route based on called party (To header)
+      const route = this.routeResolver.extractRoute(callContext.to);
+      const sessionType = this.routeResolver.resolveSessionType(route);
+      const routeDescription = this.routeResolver.getRouteDescription(route);
       
-      if (toExtension === '123') {
-        sessionType = 'test_audio';
-      } else if (this.mode === 'chat' && this.config.openai.enabled) {
-        sessionType = 'bridge';
+      callLogger.info('Route resolved', {
+        route,
+        sessionType,
+        description: routeDescription
+      });
+
+      // Check if route requires OpenAI but it's not configured
+      if (this.routeResolver.requiresOpenAI(route) && !this.config.openai.enabled) {
+        callLogger.error('Route requires OpenAI but it is not enabled', {
+          route,
+          sessionType,
+          openaiEnabled: this.config.openai.enabled
+        });
+        res.send(503, 'Service Unavailable');
+        return;
       }
 
       // Extract codec information based on session type
       const codecInfo = this.extractCodecInfo(audioMedia, sessionType);
       if (!codecInfo) {
-        const supportedCodecs = (sessionType === 'bridge' || sessionType === 'test_audio') ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
+        const supportedCodecs = (sessionType === 'chat' || sessionType === 'welcome') ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
         callLogger.error('No supported codec in offer', { 
           sessionType, 
           supportedCodecs,
@@ -147,7 +160,7 @@ export class SipHandler {
       const dialog = await this.srf.createUAS(req, res, {
         localSdp: answerSdp,
         headers: {
-          'Contact': `<sip:firefly@${this.config.rtp.localIp}:${this.config.sipInbound.port}>`,
+          'Contact': `<sip:firefly@${this.config.rtp.localIp}:${this.config.drachtio.sipPort}>`,
           'Allow': 'INVITE, ACK, BYE, CANCEL, OPTIONS, MESSAGE, INFO, UPDATE',
           'Supported': 'timer'
         }
@@ -201,10 +214,10 @@ export class SipHandler {
     return match?.[1] ?? 'unknown';
   }
 
-  private extractCodecInfo(audioMedia: any, sessionType: 'echo' | 'bridge' | 'test_audio'): ExtractedCodecInfo | null {
+  private extractCodecInfo(audioMedia: any, sessionType: SessionType): ExtractedCodecInfo | null {
     // Different codec support based on session type
-    const supportedCodecs = (sessionType === 'bridge' || sessionType === 'test_audio')
-      ? ['pcma', 'pcmu']  // OpenAI and test audio only support G.711 A-law and μ-law
+    const supportedCodecs = (sessionType === 'chat' || sessionType === 'welcome')
+      ? ['pcma', 'pcmu']  // OpenAI and welcome audio only support G.711 A-law and μ-law
       : ['opus', 'pcmu', 'pcma', 'g722'];  // Echo mode supports all codecs
     
     // Standard payload type mappings (RFC 3551)

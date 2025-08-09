@@ -11,13 +11,9 @@ import { logger } from './utils/logger';
 const program = new Command();
 program
   .name('firefly')
-  .description('SIP/RTP bridge with OpenAI Realtime API integration')
+  .description('SIP/RTP service with OpenAI Realtime API integration')
   .version('1.0.0')
-  .option('-m, --mode <mode>', 'operational mode: echo or chat', 'echo')
   .parse();
-
-const options = program.opts();
-const mode = options.mode === 'chat' ? 'chat' : 'echo';
 
 // Create main components
 const srf = new Srf();
@@ -32,14 +28,14 @@ async function startApplication(): Promise<void> {
     sipOutboundProvider: config.sipOutbound.provider,
     sipInboundEnabled: config.sipInbound.enabled,
     logLevel: config.logLevel,
-    mode: mode
+    defaultRoute: config.routing.defaultRoute
   });
 
   // Connect to drachtio server
   await connectToDrachtio();
 
   // Initialize SIP handler
-  sipHandler = new SipHandler(srf, rtpManager, config, mode);
+  sipHandler = new SipHandler(srf, rtpManager, config);
 
   // Start inbound registrar if enabled (accepts registrations from SIP clients)
   if (config.sipInbound.enabled) {

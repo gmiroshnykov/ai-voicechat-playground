@@ -1,16 +1,13 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with this VoIP-to-AI bridge codebase.
+This file provides guidance to Claude Code when working with this VoIP-to-AI service codebase.
+
+**📖 For architecture, features, and usage patterns, see [README.md](README.md)**
 
 ## Development Commands
 
 - `tilt up` - Start complete development environment with Kubernetes/Helm
-- `tilt down` - Stop development environment  
-- `k` (kubectl alias) - Kubernetes operations
-
-## Environment Setup
-
-- Environment variables are configured via Kubernetes ConfigMaps and Secrets
+- `tilt down` - Stop development environment
 
 ## Critical Technical Constraints
 
@@ -19,12 +16,7 @@ This file provides guidance to Claude Code when working with this VoIP-to-AI bri
 - **Use adaptive RTP scheduling.** Packets are scheduled based on buffer depth, not fixed timing intervals.
 - **Let errors bubble up** unless you can meaningfully handle them (retries, fallbacks, adding context).
 - **Avoid generic try/catch blocks** that only log errors. Either add meaningful context or let them bubble up.
-
-## Testing Modes
-
-- `--mode echo` - Use this for audio/RTP debugging without OpenAI dependency
-- Extension `123` - Triggers test audio playback for codec validation
-- Other extensions - Start AI conversations with OpenAI Realtime API
+- **Prefer enums/string literals over boolean variables** for configuration (e.g., `SIP_OUTBOUND_PROVIDER="kyivstar"` instead of `USE_KYIVSTAR=true`).
 
 ## API Integration Rules
 
@@ -35,5 +27,5 @@ This file provides guidance to Claude Code when working with this VoIP-to-AI bri
 ## Key Directories
 
 - `firefly/src/rtp/` - Audio processing pipeline
-- `firefly/src/sip/` - SIP protocol handling  
+- `firefly/src/sip/` - SIP protocol handling
 - `helm/firefly/` - Kubernetes deployment

@@ -19,7 +19,7 @@ export interface OpenAIAudioSourceManagerConfig {
 /**
  * OpenAI Audio Source Manager for Continuous RTP Streaming
  * 
- * This class manages audio content for OpenAI bridge sessions, providing a continuous
+ * This class manages audio content for OpenAI chat sessions, providing a continuous
  * stream of packets that defaults to silence and switches to OpenAI audio when available.
  * 
  * Features:

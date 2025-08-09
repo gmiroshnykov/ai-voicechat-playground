@@ -19,7 +19,7 @@ import { TeeStream } from './StreamUtils';
 
 // const pipelineAsync = promisify(pipeline);
 
-export interface RtpBridgeSessionStreamConfig extends RtpSessionConfig {
+export interface RtpChatSessionStreamConfig extends RtpSessionConfig {
   openaiApiKey: string;
   jitterBufferMs?: number; // Default: 40ms
   transcriptionConfig?: TranscriptionConfig;
@@ -35,12 +35,12 @@ export interface RtpBridgeSessionStreamConfig extends RtpSessionConfig {
 }
 
 /**
- * Stream-based RTP Bridge Session for OpenAI Realtime API integration
+ * Stream-based RTP Chat Session for OpenAI Realtime API integration
  * Uses Node.js streams for composable audio processing pipeline
  */
-export class RtpBridgeSessionStream extends RtpSession {
+export class RtpChatSessionStream extends RtpSession {
   private rtcpHandler?: RtcpHandler;
-  private bridgeConfig: RtpBridgeSessionStreamConfig;
+  private chatConfig: RtpChatSessionStreamConfig;
   
   // OpenAI Realtime API components
   private realtimeAgent?: RealtimeAgent;
@@ -72,17 +72,17 @@ export class RtpBridgeSessionStream extends RtpSession {
   private outboundTeeStream?: TeeStream;
   private callDirectory?: string;
 
-  constructor(sessionConfig: RtpBridgeSessionStreamConfig) {
+  constructor(sessionConfig: RtpChatSessionStreamConfig) {
     super(sessionConfig);
-    this.bridgeConfig = sessionConfig;
+    this.chatConfig = sessionConfig;
     this.onHangUpRequested = sessionConfig.onHangUpRequested;
     
     // Verify we're using a G.711 codec for OpenAI compatibility
-    if (this.bridgeConfig.codec.name !== CodecType.PCMA && this.bridgeConfig.codec.name !== CodecType.PCMU) {
-      this.logger.error('Unsupported codec for OpenAI bridge. Only G.711 A-law (PCMA) and μ-law (PCMU) are supported', {
-        codec: this.bridgeConfig.codec.name
+    if (this.chatConfig.codec.name !== CodecType.PCMA && this.chatConfig.codec.name !== CodecType.PCMU) {
+      this.logger.error('Unsupported codec for OpenAI chat. Only G.711 A-law (PCMA) and μ-law (PCMU) are supported', {
+        codec: this.chatConfig.codec.name
       });
-      throw new Error(`Unsupported codec for OpenAI bridge: ${this.bridgeConfig.codec.name}`);
+      throw new Error(`Unsupported codec for OpenAI chat: ${this.chatConfig.codec.name}`);
     }
   }
 
@@ -102,12 +102,12 @@ export class RtpBridgeSessionStream extends RtpSession {
 
 
     // Initialize transcription manager
-    if (this.bridgeConfig.transcriptionConfig?.enabled) {
+    if (this.chatConfig.transcriptionConfig?.enabled) {
       await this.initializeTranscriptionManager();
     }
     
     // Initialize recording streams
-    if (this.bridgeConfig.recordingConfig?.enabled) {
+    if (this.chatConfig.recordingConfig?.enabled) {
       await this.initializeRecordingStreams();
     }
 
@@ -211,7 +211,7 @@ export class RtpBridgeSessionStream extends RtpSession {
       remoteAddress: this.config.remoteAddress,
       remotePort: this.config.remotePort,
       codec: this.config.codec,
-      sessionId: this.config.sessionId || 'stream-bridge-session',
+      sessionId: this.config.sessionId || 'stream-chat-session',
       onStatsUpdate: (stats) => {
         // Update our stats
         this.stats.packetsReceived = stats.packetsReceived;
@@ -222,9 +222,9 @@ export class RtpBridgeSessionStream extends RtpSession {
 
     // Create jitter buffer transform
     const jitterBufferConfig: JitterBufferTransformConfig = {
-      bufferTimeMs: this.bridgeConfig.jitterBufferMs ?? 60,
+      bufferTimeMs: this.chatConfig.jitterBufferMs ?? 60,
       codecInfo: this.config.codec,
-      sessionId: this.config.sessionId || 'stream-bridge-session',
+      sessionId: this.config.sessionId || 'stream-chat-session',
       onPacketLost: (sequenceNumber) => {
         this.logger.debug('Jitter buffer detected packet loss', { sequenceNumber });
       }
@@ -237,7 +237,7 @@ export class RtpBridgeSessionStream extends RtpSession {
       remoteAddress: this.config.remoteAddress,
       remotePort: this.config.remotePort,
       codec: this.config.codec,
-      sessionId: this.config.sessionId || 'stream-bridge-session',
+      sessionId: this.config.sessionId || 'stream-chat-session',
       onStatsUpdate: (stats) => {
         // Update our stats
         this.stats.packetsSent = stats.packetsSent;
@@ -262,7 +262,7 @@ export class RtpBridgeSessionStream extends RtpSession {
     }
 
     // Set up timestamp-preserving recording tap BEFORE jitter buffer
-    if (this.bridgeConfig.recordingConfig?.enabled) {
+    if (this.chatConfig.recordingConfig?.enabled) {
       this.setupTimestampedRecording();
     }
 
@@ -282,8 +282,8 @@ export class RtpBridgeSessionStream extends RtpSession {
     });
 
     this.logger.debug('Stream pipeline connected successfully', {
-      jitterBufferMs: this.bridgeConfig.jitterBufferMs ?? 60,
-      recordingEnabled: this.bridgeConfig.recordingConfig?.enabled || false
+      jitterBufferMs: this.chatConfig.jitterBufferMs ?? 60,
+      recordingEnabled: this.chatConfig.recordingConfig?.enabled || false
     });
   }
 
@@ -320,13 +320,13 @@ export class RtpBridgeSessionStream extends RtpSession {
 
 
   private async initializeTranscriptionManager(): Promise<void> {
-    if (!this.bridgeConfig.transcriptionConfig?.enabled) {
+    if (!this.chatConfig.transcriptionConfig?.enabled) {
       return;
     }
 
     this.transcriptionManager = new TranscriptionManager({
-      transcriptionConfig: this.bridgeConfig.transcriptionConfig!,
-      callId: this.config.sessionId || 'stream-bridge-session',
+      transcriptionConfig: this.chatConfig.transcriptionConfig!,
+      callId: this.config.sessionId || 'stream-chat-session',
       onTranscriptReceived: (_entry: TranscriptEntry) => {
         // Handle transcript updates if needed
       }
@@ -334,12 +334,12 @@ export class RtpBridgeSessionStream extends RtpSession {
   }
 
   private async initializeRecordingStreams(): Promise<void> {
-    if (!this.bridgeConfig.recordingConfig?.enabled) {
+    if (!this.chatConfig.recordingConfig?.enabled) {
       return;
     }
 
-    const recordingConfig = this.bridgeConfig.recordingConfig;
-    const sessionId = this.config.sessionId || 'stream-bridge-session';
+    const recordingConfig = this.chatConfig.recordingConfig;
+    const sessionId = this.config.sessionId || 'stream-chat-session';
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     
     // Create call directory structure
@@ -384,7 +384,7 @@ export class RtpBridgeSessionStream extends RtpSession {
           filePath: `${callDirectory}/stereo.${recordingConfig.format}`,
           codec: this.config.codec,
           sessionId,
-          jitterBufferDelayMs: this.bridgeConfig.jitterBufferMs ?? 60,
+          jitterBufferDelayMs: this.chatConfig.jitterBufferMs ?? 60,
           logger: this.logger
         };
         
@@ -424,7 +424,7 @@ export class RtpBridgeSessionStream extends RtpSession {
         call: {
           sessionId: this.config.sessionId,
           startTime: new Date().toISOString(),
-          caller: this.bridgeConfig.caller,
+          caller: this.chatConfig.caller,
         },
         audio: {
           codec: {
@@ -433,18 +433,18 @@ export class RtpBridgeSessionStream extends RtpSession {
             channels: this.config.codec.channels || 1,
             payload: this.config.codec.payload
           },
-          jitterBufferMs: this.bridgeConfig.jitterBufferMs,
-          aiTempoAdjustment: this.bridgeConfig.aiTempoAdjustment
+          jitterBufferMs: this.chatConfig.jitterBufferMs,
+          aiTempoAdjustment: this.chatConfig.aiTempoAdjustment
         },
         recording: {
-          format: this.bridgeConfig.recordingConfig?.format,
-          channelMode: this.bridgeConfig.recordingConfig?.channelMode,
+          format: this.chatConfig.recordingConfig?.format,
+          channelMode: this.chatConfig.recordingConfig?.channelMode,
           sampleRate: this.config.codec.clockRate,
           bitsPerSample: 16
         },
         transcription: {
-          enabled: this.bridgeConfig.transcriptionConfig?.enabled || false,
-          model: this.bridgeConfig.transcriptionConfig?.model
+          enabled: this.chatConfig.transcriptionConfig?.enabled || false,
+          model: this.chatConfig.transcriptionConfig?.model
         }
       };
 
@@ -567,7 +567,7 @@ export class RtpBridgeSessionStream extends RtpSession {
   }
 
   private async initializeTempoAdjustment(): Promise<void> {
-    const tempo = this.bridgeConfig.aiTempoAdjustment?.tempo;
+    const tempo = this.chatConfig.aiTempoAdjustment?.tempo;
     if (!tempo || tempo === 1.0) {
       return; // No adjustment needed
     }
@@ -575,7 +575,7 @@ export class RtpBridgeSessionStream extends RtpSession {
     const tempoAdjustConfig: TempoAdjustTransformConfig = {
       tempo: tempo,
       codecInfo: this.config.codec,
-      sessionId: this.config.sessionId || 'stream-bridge-session'
+      sessionId: this.config.sessionId || 'stream-chat-session'
     };
     
     this.tempoAdjustTransform = new TempoAdjustTransform(tempoAdjustConfig);
@@ -606,7 +606,7 @@ export class RtpBridgeSessionStream extends RtpSession {
       });
       
       this.logger.debug('AI audio processing pipeline set up with tempo adjustment', {
-        tempo: this.bridgeConfig.aiTempoAdjustment?.tempo
+        tempo: this.chatConfig.aiTempoAdjustment?.tempo
       });
     } else {
       // Direct pipeline: Input -> OpenAI Audio Source Manager
@@ -633,7 +633,7 @@ export class RtpBridgeSessionStream extends RtpSession {
           channels: this.config.codec.channels
         },
         logger: this.logger,
-        sessionId: this.config.sessionId || 'stream-bridge-session',
+        sessionId: this.config.sessionId || 'stream-chat-session',
       };
       
       this.openaiAudioSourceManager = new OpenAIAudioSourceManager(audioSourceConfig);
@@ -651,14 +651,14 @@ export class RtpBridgeSessionStream extends RtpSession {
       return;
     }
     
-    this.logger.debug('Starting continuous RTP stream for OpenAI bridge');
+    this.logger.debug('Starting continuous RTP stream for OpenAI chat');
     
     // Create and configure continuous scheduler
     const schedulerConfig: RtpContinuousSchedulerConfig = {
       targetInterval: 20, // 20ms target interval
       logFrequency: 100, // Log every 100 packets
       logger: this.logger,
-      sessionId: this.config.sessionId || 'stream-bridge-session',
+      sessionId: this.config.sessionId || 'stream-chat-session',
       onPacketSend: (_packetNumber: number, callTimeMs: number) => {
         // Get the next packet from OpenAI audio source manager
         const result = this.openaiAudioSourceManager!.getNextPacket(callTimeMs);
@@ -686,7 +686,7 @@ export class RtpBridgeSessionStream extends RtpSession {
 
   private sendAudioPacket(payload: Buffer, _isAudioDataAvailable: boolean = false): void {
     // Record the complete outbound audio stream (includes silence, comfort noise, proper timing)
-    if (this.bridgeConfig.recordingConfig?.enabled) {
+    if (this.chatConfig.recordingConfig?.enabled) {
       // Calculate RTP timestamp for outbound audio
       // This should match the timestamp that will be used by AudioToRtpStream
       const rtpTimestamp = this.calculateOutboundRtpTimestamp();
@@ -737,7 +737,7 @@ export class RtpBridgeSessionStream extends RtpSession {
   private async initializeOpenAIConnection(): Promise<void> {
     try {
       // Create agent with call context and tools
-      const callerInfo = this.bridgeConfig.caller;
+      const callerInfo = this.chatConfig.caller;
       const contextInfo = callerInfo ? `\nCaller: ${callerInfo.phoneNumber || 'Unknown'}${callerInfo.diversionHeader ? `\nDiverted from: ${callerInfo.diversionHeader}` : ''}` : '';
       
       // Create hang up tool
@@ -788,9 +788,9 @@ export class RtpBridgeSessionStream extends RtpSession {
         outputAudioFormat: audioFormat
       };
       
-      if (this.bridgeConfig.transcriptionConfig?.enabled) {
+      if (this.chatConfig.transcriptionConfig?.enabled) {
         sessionConfig.inputAudioTranscription = {
-          model: this.bridgeConfig.transcriptionConfig.model,
+          model: this.chatConfig.transcriptionConfig.model,
         };
       }
       
@@ -805,7 +805,7 @@ export class RtpBridgeSessionStream extends RtpSession {
 
       // Connect to OpenAI
       await this.realtimeSession.connect({ 
-        apiKey: this.bridgeConfig.openaiApiKey
+        apiKey: this.chatConfig.openaiApiKey
       });
       
       this.isConnectedToOpenAI = true;
@@ -963,7 +963,7 @@ export class RtpBridgeSessionStream extends RtpSession {
   }
 
   public getRecordingStats() {
-    if (!this.bridgeConfig.recordingConfig?.enabled) {
+    if (!this.chatConfig.recordingConfig?.enabled) {
       return null;
     }
     
@@ -972,7 +972,7 @@ export class RtpBridgeSessionStream extends RtpSession {
       outbound: this.outboundRecorder?.getStats(),
       stereo: this.stereoRecorder?.getStats(),
       enabled: true,
-      channelMode: this.bridgeConfig.recordingConfig.channelMode
+      channelMode: this.chatConfig.recordingConfig.channelMode
     };
   }
 }

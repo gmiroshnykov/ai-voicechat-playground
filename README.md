@@ -1,11 +1,11 @@
 # Firefly VoIP Platform
 
-An experimental VoIP system that bridges telephone calls to OpenAI's Realtime API, enabling AI-powered voice conversations over traditional phone networks. This research project explores implementing production-grade telephony features including multi-tenant support and carrier integration, though currently tested only in development environments.
+An experimental VoIP service connecting telephone calls to OpenAI's Realtime API, enabling AI-powered voice conversations over traditional phone networks. This research project explores implementing production-grade telephony features including intelligent call routing and carrier integration, though currently tested only in development environments.
 
 ## Features (Current Implementation)
 
 - **Direct SIP Registration:** Built-in SIP registrar accepting client registrations (Linphone, softphones)
-- **PSTN-to-AI Bridge:** Direct telephone calls to OpenAI Realtime API (experimental)
+- **Intelligent Call Routing:** SIP URI-based routing (`sip:chat@domain`, `sip:welcome@domain`) with configurable defaults
 - **Stream-Based Audio Pipeline:** Node.js Transform streams for composable real-time audio processing
 - **Adaptive RTP Scheduling:** Buffer-depth based packet scheduling (not fixed timing) for optimal flow control
 - **Advanced Jitter Buffer:** Packet reordering, loss recovery, and comfort noise generation
@@ -68,7 +68,7 @@ SIP Client (Linphone/Softphone) → Firefly SIP Registrar → OpenAI Realtime AP
 
 **External Provider Mode:**
 ```
-PSTN/Mobile Phone → VoIP Provider (Kyivstar) → Firefly (TypeScript) → OpenAI Realtime API
+PSTN/Mobile Phone → VoIP Provider (Kyivstar) → Firefly Route Resolver → OpenAI/Echo/Welcome
                                                         ↓
                                              Call Recording & Metadata
 ```
@@ -97,12 +97,15 @@ ai-voicechat-playground/
 - Production telephony handling with concurrent calls and reliability
 - ⚠️ **Current Status**: Designed but only tested in development environments
 
-**Testing Modes:**
-- `--mode chat`: Bridge calls to OpenAI Realtime API for AI conversations
-- `--mode echo`: Audio echo testing for debugging RTP/codec issues
-- Extension `123`: Test audio playback with tempo adjustment support for codec/timing validation
+**Call Routing:**
+- **Named Routes**: Call `sip:chat@domain`, `sip:welcome@domain`, `sip:echo@domain`
+- **Default Route**: External calls (phone numbers) route to configurable default (welcome/echo/chat)  
+- **Route Types**:
+  - `chat` - OpenAI Realtime API conversations (requires OpenAI API key + `OPENAI_ENABLED=true`)
+  - `echo` - Audio loopback testing for debugging RTP/codec issues
+  - `welcome` - Test audio playback with tempo adjustment for codec/timing validation
 - Built-in silence generation and comfort noise for packet loss scenarios
-- Comprehensive RTP statistics and jitter buffer monitoring
+- Comprehensive RTP statistics and jitter buffer monitoring  
 - G.711 PCMA/PCMU support for minimal latency
 
 ## Documentation

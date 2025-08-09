@@ -1,4 +1,4 @@
-import { AppConfig, EnvironmentVariables, SipOutboundProvider } from './types';
+import { AppConfig, EnvironmentVariables, SipOutboundProvider, SessionType } from './types';
 
 export * from './types';
 
@@ -61,6 +61,14 @@ function validateBooleanEnv(value: string): boolean {
     return false;
   }
   throw new ConfigurationError(`Invalid boolean value: ${value}. Must be true, false, 1, 0, yes, no, or empty`);
+}
+
+function validateSessionType(value: string): SessionType {
+  const validTypes: SessionType[] = ['echo', 'chat', 'welcome'];
+  if (!validTypes.includes(value as SessionType)) {
+    throw new ConfigurationError(`Invalid DEFAULT_ROUTE: ${value}. Must be one of: ${validTypes.join(', ')}`);
+  }
+  return value as SessionType;
 }
 
 export function loadConfig(): AppConfig {
@@ -167,6 +175,10 @@ export function loadConfig(): AppConfig {
       filenamePrefix: getOptionalEnv('RECORDING_FILENAME_PREFIX', 'call')
     };
 
+    const routingConfig = {
+      defaultRoute: validateSessionType(getOptionalEnv('DEFAULT_ROUTE', 'welcome'))
+    };
+
     const config: AppConfig = {
       sipOutbound: sipOutboundConfig,
       sipInbound: sipInboundConfig,
@@ -177,6 +189,7 @@ export function loadConfig(): AppConfig {
       testAudio: testAudioConfig,
       aiAudio: aiAudioConfig,
       recording: recordingConfig,
+      routing: routingConfig,
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

@@ -1,6 +1,6 @@
 export { RtpSession } from './RtpSession';
 export { RtpEchoSession } from './RtpEchoSession';
-export { RtpBridgeSessionStream } from './RtpBridgeSessionStream';
+export { RtpChatSessionStream } from './RtpChatSessionStream';
 export { RtpManager } from './RtpManager';
 export { RtcpHandler } from './RtcpHandler';
 export { CodecHandler } from './CodecHandler';

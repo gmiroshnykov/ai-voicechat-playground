@@ -1,7 +1,7 @@
 import { RtpSession } from './RtpSession';
 import { RtpEchoSession } from './RtpEchoSession';
-import { RtpBridgeSessionStream, RtpBridgeSessionStreamConfig } from './RtpBridgeSessionStream';
-import { RtpTestAudioSession, RtpTestAudioSessionConfig } from './RtpTestAudioSession';
+import { RtpChatSessionStream, RtpChatSessionStreamConfig } from './RtpChatSessionStream';
+import { RtpWelcomeSession, RtpWelcomeSessionConfig } from './RtpWelcomeSession';
 import { RtpSessionConfig, CodecInfo } from './types';
 import { RtpConfig, OpenAIConfig, TranscriptionConfig, RecordingConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
@@ -12,8 +12,8 @@ export interface CreateSessionOptions {
   remotePort: number;
   codec: CodecInfo;
   sessionId: string;
-  sessionType?: 'echo' | 'bridge' | 'bridge_stream' | 'test_audio';
-  // OpenAI bridge specific options
+  sessionType?: 'echo' | 'chat' | 'welcome';
+  // OpenAI chat specific options
   openaiConfig?: OpenAIConfig;
   transcriptionConfig?: TranscriptionConfig;
   recordingConfig?: RecordingConfig;
@@ -22,7 +22,7 @@ export interface CreateSessionOptions {
     diversionHeader?: string;
   };
   onHangUpRequested?: () => Promise<void>;
-  // Stream-based bridge specific options
+  // Stream-based chat specific options
   streamConfig?: {
     aiTempoAdjustment?: {
       tempo: number; // 1.0 = normal speed, 1.2 = 20% faster
@@ -79,19 +79,19 @@ export class RtpManager {
       // Create appropriate session type
       let session: RtpSession;
       switch (options.sessionType) {
-        case 'bridge':
+        case 'chat':
           if (!options.openaiConfig || !options.openaiConfig.enabled) {
-            throw new RtpSessionError('Bridge session requires OpenAI configuration', { 
+            throw new RtpSessionError('Chat session requires OpenAI configuration', { 
               sessionId: options.sessionId 
             });
           }
           if (!options.openaiConfig.apiKey) {
-            throw new RtpSessionError('Bridge session requires OpenAI API key', { 
+            throw new RtpSessionError('Chat session requires OpenAI API key', { 
               sessionId: options.sessionId 
             });
           }
           
-          const bridgeConfig: RtpBridgeSessionStreamConfig = {
+          const chatConfig: RtpChatSessionStreamConfig = {
             ...sessionConfig,
             openaiApiKey: options.openaiConfig.apiKey,
             jitterBufferMs: this.rtpConfig.jitterBufferMs,
@@ -101,16 +101,16 @@ export class RtpManager {
             onHangUpRequested: options.onHangUpRequested,
             aiTempoAdjustment: options.streamConfig?.aiTempoAdjustment
           };
-          session = new RtpBridgeSessionStream(bridgeConfig);
+          session = new RtpChatSessionStream(chatConfig);
           break;
           
-        case 'test_audio':
-          const testAudioConfig: RtpTestAudioSessionConfig = {
+        case 'welcome':
+          const welcomeConfig: RtpWelcomeSessionConfig = {
             ...sessionConfig,
             onHangUpRequested: options.onHangUpRequested,
             tempoAdjustment: options.testAudioConfig?.tempoAdjustment
           };
-          session = new RtpTestAudioSession(testAudioConfig);
+          session = new RtpWelcomeSession(welcomeConfig);
           break;
           
         case 'echo':

@@ -60,6 +60,12 @@ export interface RecordingConfig {
   filenamePrefix?: string;
 }
 
+export type SessionType = 'echo' | 'chat' | 'welcome';
+
+export interface RoutingConfig {
+  defaultRoute: SessionType;
+}
+
 export const OPENAI_AGENT_NAME = 'Firefly Assistant';
 
 export const OPENAI_AGENT_INSTRUCTIONS = `You are a helpful voice assistant connected via telephone. Start the conversation in Ukrainian, but switch to English if the caller requests it or speaks English to you.
@@ -78,6 +84,7 @@ export interface AppConfig {
   testAudio: TestAudioConfig;
   aiAudio: AIAudioConfig;
   recording: RecordingConfig;
+  routing: RoutingConfig;
   environment: string;
   logLevel: "trace" | "debug" | "info" | "warn" | "error";
 }
@@ -122,6 +129,8 @@ export interface EnvironmentVariables {
   RECORDING_CHANNEL_MODE?: string;
   RECORDING_INCLUDE_METADATA?: string;
   RECORDING_FILENAME_PREFIX?: string;
+  
+  DEFAULT_ROUTE?: string;
   
   NODE_ENV?: string;
   LOG_LEVEL?: string;

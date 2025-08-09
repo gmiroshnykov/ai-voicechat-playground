@@ -6,7 +6,7 @@ import { TempoAdjustTransform, TempoAdjustTransformConfig } from './TempoAdjustT
 import { AudioFileStream, AudioFileStreamConfig } from './AudioFileStream';
 import { AudioPacketizer, AudioPacketizerConfig, AudioPacket } from './AudioPacketizer';
 
-export interface RtpTestAudioSessionConfig extends RtpSessionConfig {
+export interface RtpWelcomeSessionConfig extends RtpSessionConfig {
   onHangUpRequested?: () => Promise<void>;
   tempoAdjustment?: {
     tempo: number; // 1.0 = normal speed, 1.2 = 20% faster
@@ -16,9 +16,9 @@ export interface RtpTestAudioSessionConfig extends RtpSessionConfig {
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
 
-export class RtpTestAudioSession extends RtpSession {
+export class RtpWelcomeSession extends RtpSession {
   private rtpPacket: RtpPacket;
-  private testConfig: RtpTestAudioSessionConfig;
+  private welcomeConfig: RtpWelcomeSessionConfig;
   private adaptiveScheduler?: AdaptiveRtpScheduler;
   private tempoAdjustTransform?: TempoAdjustTransform;
   
@@ -27,9 +27,9 @@ export class RtpTestAudioSession extends RtpSession {
   private audioPacketizer?: AudioPacketizer;
   private audioPacketQueue: AudioPacket[] = [];
 
-  constructor(sessionConfig: RtpTestAudioSessionConfig) {
+  constructor(sessionConfig: RtpWelcomeSessionConfig) {
     super(sessionConfig);
-    this.testConfig = sessionConfig;
+    this.welcomeConfig = sessionConfig;
     
     
     // Initialize RTP packet for sending
@@ -77,7 +77,7 @@ export class RtpTestAudioSession extends RtpSession {
   }
 
   private async initializeTempoAdjustment(): Promise<void> {
-    const tempo = this.testConfig.tempoAdjustment?.tempo;
+    const tempo = this.welcomeConfig.tempoAdjustment?.tempo;
     if (!tempo || tempo === 1.0) {
       return; // No adjustment needed
     }
@@ -130,7 +130,7 @@ export class RtpTestAudioSession extends RtpSession {
       
       this.logger.info('Stream-based audio initialized', {
         hasTempoAdjustment: !!this.tempoAdjustTransform,
-        tempo: this.testConfig.tempoAdjustment?.tempo
+        tempo: this.welcomeConfig.tempoAdjustment?.tempo
       });
       
     } catch (error) {
@@ -151,7 +151,7 @@ export class RtpTestAudioSession extends RtpSession {
       // Pipeline: AudioFileStream -> TempoAdjustTransform -> AudioPacketizer
       currentStream = currentStream.pipe(this.tempoAdjustTransform);
       this.logger.info('Stream pipeline set up with tempo adjustment', {
-        tempo: this.testConfig.tempoAdjustment?.tempo
+        tempo: this.welcomeConfig.tempoAdjustment?.tempo
       });
     } else {
       this.logger.info('Stream pipeline set up without tempo adjustment');
@@ -243,9 +243,9 @@ export class RtpTestAudioSession extends RtpSession {
         this.logger.debug('Stream-based RTP scheduler completed - hanging up');
         
         // Hang up the call
-        if (this.testConfig.onHangUpRequested) {
+        if (this.welcomeConfig.onHangUpRequested) {
           try {
-            await this.testConfig.onHangUpRequested();
+            await this.welcomeConfig.onHangUpRequested();
           } catch (error) {
             this.logger.error('Error hanging up call after stream completion', error);
           }
