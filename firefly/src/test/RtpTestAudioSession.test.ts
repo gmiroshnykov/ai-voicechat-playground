@@ -1,9 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import dgram from 'dgram';
-import { RtpTestAudioSession, RtpTestAudioSessionConfig } from '../rtp/RtpTestAudioSession';
+import { RtpWelcomeSession, RtpWelcomeSessionConfig } from '../rtp/RtpWelcomeSession';
 
-describe('RtpTestAudioSession', () => {
+describe('RtpWelcomeSession', () => {
   test('should work with adaptive scheduler', async () => {
     const remotePort = 8000 + Math.floor(Math.random() * 1000);
     const localPort = 9000 + Math.floor(Math.random() * 1000);
@@ -23,7 +23,7 @@ describe('RtpTestAudioSession', () => {
       receivedPackets.push(msg);
     });
     
-    const config: RtpTestAudioSessionConfig = {
+    const config: RtpWelcomeSessionConfig = {
       sessionId: 'adaptive-test-session',
       localPort,
       remoteAddress: '127.0.0.1',
@@ -40,7 +40,7 @@ describe('RtpTestAudioSession', () => {
       }
     };
     
-    const session = new RtpTestAudioSession(config);
+    const session = new RtpWelcomeSession(config);
     
     try {
       await session.start();
@@ -95,7 +95,7 @@ describe('RtpTestAudioSession', () => {
       timestamps.push(Date.now());
     });
     
-    const config: RtpTestAudioSessionConfig = {
+    const config: RtpWelcomeSessionConfig = {
       sessionId: 'packet-rate-test',
       localPort,
       remoteAddress: '127.0.0.1',
@@ -111,7 +111,7 @@ describe('RtpTestAudioSession', () => {
       }
     };
     
-    const session = new RtpTestAudioSession(config);
+    const session = new RtpWelcomeSession(config);
     
     try {
       const startTime = Date.now();
@@ -142,7 +142,7 @@ describe('RtpTestAudioSession', () => {
   });
 
   test('should support tempo adjustment configuration', { timeout: 10000 }, async () => {
-    const config: RtpTestAudioSessionConfig = {
+    const config: RtpWelcomeSessionConfig = {
       sessionId: 'tempo-test',
       localPort: 9000 + Math.floor(Math.random() * 1000),
       remoteAddress: '127.0.0.1',
@@ -161,7 +161,7 @@ describe('RtpTestAudioSession', () => {
       }
     };
     
-    const session = new RtpTestAudioSession(config);
+    const session = new RtpWelcomeSession(config);
     
     try {
       // Test that session can start with tempo adjustment configuration

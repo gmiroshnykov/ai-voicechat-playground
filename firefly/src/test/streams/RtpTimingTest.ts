@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { StallableTransform } from './StallableTransform';
-import { RtpTestAudioSession } from '../../rtp/RtpTestAudioSession';
-import { RtpTestAudioSessionConfig } from '../../rtp/RtpTestAudioSession';
+import { RtpWelcomeSession } from '../../rtp/RtpWelcomeSession';
+import { RtpWelcomeSessionConfig } from '../../rtp/RtpWelcomeSession';
 import { CodecType } from '../../rtp/types';
 import { createLogger } from '../../utils/logger';
 
@@ -43,7 +43,7 @@ export class RtpTimingTest {
   private rtpTimestamps: number[] = [];
   private stallEvents: Array<{ byteCount: number; durationMs: number; timestamp: number }> = [];
   private testStartTime = 0;
-  private session?: RtpTestAudioSession;
+  private session?: RtpWelcomeSession;
   
   constructor(private config: RtpTimingTestConfig) {}
   
@@ -87,7 +87,7 @@ export class RtpTimingTest {
       this.createCustomAudioSource(stallableStream);
       
       // Create RTP session with custom audio source
-      const sessionConfig: RtpTestAudioSessionConfig = {
+      const sessionConfig: RtpWelcomeSessionConfig = {
         sessionId: 'rtp-timing-test',
         codec: {
           name: CodecType.PCMU,
@@ -102,7 +102,7 @@ export class RtpTimingTest {
         }
       };
       
-      this.session = new RtpTestAudioSession(sessionConfig);
+      this.session = new RtpWelcomeSession(sessionConfig);
       
       // Hook into packet sending to capture timestamps
       this.hookRtpPacketSending();
