@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "firefly.fullname" . }}-test
+  labels:
+    {{- include "firefly.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    # Helm test hook - this pod will be created when running 'helm test'
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  # Always use host network for UDP socket tests (shares network stack with main app)
+  hostNetwork: true
+  restartPolicy: Never
+  containers:
+  - name: test-runner
+    image: "{{ .Values.fireflyImageRepository }}:{{ .Values.fireflyImageTag }}"
+    imagePullPolicy: {{ .Values.fireflyImagePullPolicy }}
+    
+    # Override the default command to run tests
+    command: ["/bin/sh"]
+    args:
+      - -c
+      - |
+        echo "🧪 Starting Firefly test suite..."
+        echo "📦 Node version: $(node --version)"
+        echo "📦 NPM version: $(npm --version)"
+        echo "🌐 Network mode: host (shared with main app)"
+        
+        # Run the test suite (using pre-built tests)
+        echo "🚀 Running tests..."
+        node --test dist/test/**/*.test.js
+        
+        TEST_EXIT_CODE=$?
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
+          echo "✅ All tests passed!"
+        else
+          echo "❌ Tests failed with exit code: $TEST_EXIT_CODE"
+        fi
+        exit $TEST_EXIT_CODE
+    
+    # Set working directory
+    workingDir: /app
+    
+    # Environment variables for tests
+    env:
+      # Basic configuration for test environment
+      - name: NODE_ENV
+        value: "test"
+      - name: LOG_LEVEL
+        value: {{ .Values.tests.logLevel | default "info" | quote }}
+      
+      # Network configuration for UDP tests (localhost within shared host network)
+      - name: LOCAL_IP
+        value: "127.0.0.1"
+      
+      # Drachtio configuration (tests may need this for integration tests)
+      - name: DRACHTIO_HOST
+        value: {{ .Values.drachtioHost | quote }}
+      - name: DRACHTIO_PORT
+        value: {{ .Values.drachtioPort | quote }}
+      - name: DRACHTIO_SIP_PORT
+        value: {{ .Values.drachtioSipPort | quote }}
+      
+      # Test-specific environment variables
+      {{- range $key, $value := .Values.tests.env }}
+      - name: {{ $key }}
+        value: {{ $value | quote }}
+      {{- end }}
+    
+    # Resource limits for test execution
+    resources:
+      limits:
+        memory: {{ .Values.tests.resources.limits.memory | default "512Mi" }}
+        cpu: {{ .Values.tests.resources.limits.cpu | default "1000m" }}
+      requests:
+        memory: {{ .Values.tests.resources.requests.memory | default "256Mi" }}
+        cpu: {{ .Values.tests.resources.requests.cpu | default "500m" }}
+    
+    # Security context
+    securityContext:
+      {{- if .Values.tests.privileged }}
+      privileged: true
+      {{- else }}
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      runAsUser: 1001
+      capabilities:
+        add:
+        - NET_BIND_SERVICE  # Allow binding to ports < 1024 if needed for tests
+      {{- end }}
+  
+  # Node selection for test execution
+  {{- with .Values.tests.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  
+  # Tolerations for test pods
+  {{- with .Values.tests.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  
+  # Affinity rules
+  {{- with .Values.tests.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

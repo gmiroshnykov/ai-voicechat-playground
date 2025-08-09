@@ -49,6 +49,9 @@ data:
   # OpenAI configuration (public settings)
   OPENAI_ENABLED: {{ .Values.openaiEnabled | quote }}
   
+  # Routing configuration
+  DEFAULT_ROUTE: {{ .Values.defaultRoute | quote }}
+  
   # Generic environment variables
   {{- range $key, $value := .Values.env }}
   {{ $key }}: {{ $value | quote }}

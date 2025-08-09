@@ -34,7 +34,6 @@ drachtioResourcesLimitsCpu: "200m"
 fireflyImageRepository: firefly
 fireflyImageTag: latest
 fireflyImagePullPolicy: IfNotPresent
-fireflyMode: chat
 
 # Firefly resource limits
 fireflyResourcesRequestsMemory: "256Mi"
@@ -88,15 +87,47 @@ audioTestTempo: 1.0
 audioAiTempo: 1.0
 
 # Network configuration
-localIp: "127.0.0.1"
+# localIp: automatically set by Tiltfile to minikube ip
 
 # OpenAI configuration
 openaiEnabled: false  # Must be explicitly enabled
 openaiApiKey: ""  # Set in values.local.yaml
 
+# Routing configuration
+defaultRoute: welcome  # Options: echo, chat, welcome
+
 # Service configuration
 drachtioServiceType: ClusterIP
 drachtioServiceClusterIP: None  # Headless service for StatefulSet
+
+# Test configuration (for 'helm test' command)
+# Tests always use host networking to share network stack with main app
+tests:
+  privileged: false  # Set to true if tests need privileged access
+  logLevel: info
+  
+  # Test-specific environment variables
+  env: {}
+    # Add any test-specific environment variables here
+    # EXAMPLE_TEST_VAR: "test-value"
+  
+  # Resource limits for test execution
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 1000m
+    requests:
+      memory: 256Mi
+      cpu: 500m
+  
+  # Node selection for test execution (optional)
+  nodeSelector: {}
+  
+  # Tolerations for test pods (optional)
+  tolerations: []
+  
+  # Affinity rules for test pods (optional)
+  affinity: {}
 
 # Generic environment variables for application configuration
 # Usage: env.SOME_VAR: "value" gets mapped to SOME_VAR environment variable
