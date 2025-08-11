@@ -1,0 +1,75 @@
+{{- if .Values.freeswitchEnabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: freeswitch
+  labels:
+    app: freeswitch
+    {{- range $key, $value := .Values.globalLabels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  serviceName: freeswitch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freeswitch
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: freeswitch
+        {{- range $key, $value := .Values.globalLabels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+    spec:
+      hostNetwork: {{ .Values.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: freeswitch
+        image: {{ .Values.freeswitchImageRepository }}:{{ .Values.freeswitchImageTag }}
+        imagePullPolicy: {{ .Values.freeswitchImagePullPolicy }}
+        args:
+        - freeswitch
+        - --event-socket-port
+        - {{ .Values.freeswitchEventSocketPort | quote }}
+        - --password
+        - {{ .Values.freeswitchSecret | quote }}
+        - -nonat
+        - -nf
+        env:
+        - name: FREESWITCH_EVENT_SOCKET_PORT
+          value: {{ .Values.freeswitchEventSocketPort | quote }}
+        - name: FREESWITCH_SECRET
+          value: {{ .Values.freeswitchSecret | quote }}
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        ports:
+        - containerPort: {{ .Values.freeswitchEventSocketPort }}
+          name: event-socket
+          protocol: TCP
+        resources:
+          requests:
+            memory: {{ .Values.freeswitchResourcesRequestsMemory | quote }}
+            cpu: {{ .Values.freeswitchResourcesRequestsCpu | quote }}
+          limits:
+            memory: {{ .Values.freeswitchResourcesLimitsMemory | quote }}
+            cpu: {{ .Values.freeswitchResourcesLimitsCpu | quote }}
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.freeswitchEventSocketPort }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.freeswitchEventSocketPort }}
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+{{- end }}

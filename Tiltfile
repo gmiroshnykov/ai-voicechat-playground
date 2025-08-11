@@ -22,5 +22,5 @@ docker_build(
 )
 
 # Set resource dependencies
-k8s_resource('firefly', resource_deps=['drachtio'])
+k8s_resource('firefly', resource_deps=['drachtio', 'freeswitch'])
 

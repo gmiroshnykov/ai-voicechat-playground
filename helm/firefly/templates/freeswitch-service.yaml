@@ -1,0 +1,21 @@
+{{- if .Values.freeswitchEnabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: freeswitch
+  labels:
+    app: freeswitch
+    {{- range $key, $value := .Values.globalLabels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  type: {{ .Values.drachtioServiceType }}
+  clusterIP: {{ .Values.drachtioServiceClusterIP }}
+  selector:
+    app: freeswitch
+  ports:
+  - name: event-socket
+    port: {{ .Values.freeswitchEventSocketPort }}
+    targetPort: {{ .Values.freeswitchEventSocketPort }}
+    protocol: TCP
+{{- end }}

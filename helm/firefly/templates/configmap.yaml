@@ -52,6 +52,16 @@ data:
   # Routing configuration
   DEFAULT_ROUTE: {{ .Values.defaultRoute | quote }}
   
+  # Media server configuration
+  MEDIA_SERVER_ADDRESS: {{ .Values.mediaServerAddress | quote }}
+  MEDIA_SERVER_PORT: {{ .Values.mediaServerPort | quote }}
+  MEDIA_SERVER_SECRET: {{ .Values.mediaServerSecret | quote }}
+  MEDIA_SERVER_ENABLED: {{ .Values.mediaServerEnabled | quote }}
+  
+  # Welcome audio configuration
+  WELCOME_AUDIO_PATH: {{ .Values.welcomeAudioPath | quote }}
+  WELCOME_AUDIO_FALLBACK_TO_TONE: {{ .Values.welcomeAudioFallbackToTone | quote }}
+  
   # Generic environment variables
   {{- range $key, $value := .Values.env }}
   {{ $key }}: {{ $value | quote }}

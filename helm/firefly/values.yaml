@@ -30,6 +30,20 @@ drachtioResourcesRequestsCpu: "100m"
 drachtioResourcesLimitsMemory: "256Mi"
 drachtioResourcesLimitsCpu: "200m"
 
+# FreeSWITCH media server configuration
+freeswitchEnabled: true
+freeswitchImageRepository: drachtio/drachtio-freeswitch-mrf
+freeswitchImageTag: "0.9.4"
+freeswitchImagePullPolicy: IfNotPresent
+freeswitchEventSocketPort: 8021
+freeswitchSecret: "ClueCon"
+
+# FreeSWITCH resource limits
+freeswitchResourcesRequestsMemory: "128Mi"
+freeswitchResourcesRequestsCpu: "100m"
+freeswitchResourcesLimitsMemory: "512Mi"
+freeswitchResourcesLimitsCpu: "500m"
+
 # Firefly application configuration
 fireflyImageRepository: firefly
 fireflyImageTag: latest
@@ -95,6 +109,16 @@ openaiApiKey: ""  # Set in values.local.yaml
 
 # Routing configuration
 defaultRoute: welcome  # Options: echo, chat, welcome
+
+# Media server configuration
+mediaServerAddress: "127.0.0.1"
+mediaServerPort: 8021
+mediaServerSecret: "ClueCon"
+mediaServerEnabled: true
+
+# Welcome audio configuration
+welcomeAudioPath: "audio/welcome.aiff"  # Relative to firefly directory
+welcomeAudioFallbackToTone: true
 
 # Service configuration
 drachtioServiceType: ClusterIP
