@@ -1,32 +1,46 @@
 import * as sdpTransform from 'sdp-transform';
-import { SrfClient, InviteRequest, InviteResponse, Dialog, CallContext, ParsedSdp, ExtractedCodecInfo } from './types';
+import Srf, { SrfRequest, SrfResponse, Dialog } from 'drachtio-srf';
+import { CallContext, ParsedSdp, ExtractedCodecInfo } from './types';
 import { RtpManager } from '../rtp/RtpManager';
 import { CodecInfo } from '../rtp/types';
 import { AppConfig, SessionType } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RouteResolver } from './routing';
+import { DrachtioWelcomeHandler } from './DrachtioWelcomeHandler';
 
 export class SipHandler {
-  private readonly srf: SrfClient;
+  private readonly srf: Srf;
   private readonly rtpManager: RtpManager;
   private readonly config: AppConfig;
   private readonly logger: Logger;
   private readonly activeDialogs: Map<string, Dialog>;
   private readonly routeResolver: RouteResolver;
+  private readonly drachtioWelcomeHandler: DrachtioWelcomeHandler;
 
-  constructor(srf: SrfClient, rtpManager: RtpManager, config: AppConfig) {
+  constructor(srf: Srf, rtpManager: RtpManager, config: AppConfig) {
     this.srf = srf;
     this.rtpManager = rtpManager;
     this.config = config;
     this.logger = createLogger({ component: 'SipHandler' });
     this.activeDialogs = new Map();
     this.routeResolver = new RouteResolver(config.routing.defaultRoute);
+    this.drachtioWelcomeHandler = new DrachtioWelcomeHandler(this.srf, this.config);
     
     // Set up INVITE handler
     this.srf.invite(this.handleInvite.bind(this));
   }
 
-  private async handleInvite(req: InviteRequest, res: InviteResponse): Promise<void> {
+  public async initialize(): Promise<void> {
+    try {
+      await this.drachtioWelcomeHandler.initialize();
+      this.logger.info('SipHandler initialized successfully');
+    } catch (error) {
+      this.logger.error('Failed to initialize SipHandler', error);
+      throw error;
+    }
+  }
+
+  private async handleInvite(req: SrfRequest, res: SrfResponse): Promise<void> {
     const callContext = this.extractCallContext(req);
     const callLogger = this.logger.child({ callId: callContext.callId });
     
@@ -63,6 +77,13 @@ export class SipHandler {
         description: routeDescription
       });
 
+      // Handle welcome route with drachtio-fsmrf
+      if (sessionType === 'welcome') {
+        callLogger.info('Routing welcome call to drachtio-fsmrf handler');
+        await this.drachtioWelcomeHandler.handleWelcomeCall(req, res, callContext.callId);
+        return;
+      }
+
       // Check if route requires OpenAI but it's not configured
       if (this.routeResolver.requiresOpenAI(route) && !this.config.openai.enabled) {
         callLogger.error('Route requires OpenAI but it is not enabled', {
@@ -77,7 +98,7 @@ export class SipHandler {
       // Extract codec information based on session type
       const codecInfo = this.extractCodecInfo(audioMedia, sessionType);
       if (!codecInfo) {
-        const supportedCodecs = (sessionType === 'chat' || sessionType === 'welcome') ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
+        const supportedCodecs = (sessionType === 'chat') ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
         callLogger.error('No supported codec in offer', { 
           sessionType, 
           supportedCodecs,
@@ -188,7 +209,7 @@ export class SipHandler {
     }
   }
 
-  private extractCallContext(req: InviteRequest): CallContext {
+  private extractCallContext(req: SrfRequest): CallContext {
     const callId = req.get('Call-ID') || `unknown-${Date.now()}`;
     const from = req.get('From') || 'unknown';
     const to = req.get('To') || 'unknown';
@@ -216,8 +237,8 @@ export class SipHandler {
 
   private extractCodecInfo(audioMedia: any, sessionType: SessionType): ExtractedCodecInfo | null {
     // Different codec support based on session type
-    const supportedCodecs = (sessionType === 'chat' || sessionType === 'welcome')
-      ? ['pcma', 'pcmu']  // OpenAI and welcome audio only support G.711 A-law and μ-law
+    const supportedCodecs = (sessionType === 'chat')
+      ? ['pcma', 'pcmu']  // OpenAI only supports G.711 A-law and μ-law
       : ['opus', 'pcmu', 'pcma', 'g722'];  // Echo mode supports all codecs
     
     // Standard payload type mappings (RFC 3551)
@@ -362,6 +383,9 @@ export class SipHandler {
 
   public async shutdown(): Promise<void> {
     this.logger.debug('Shutting down SIP handler');
+    
+    // Shutdown drachtio welcome handler
+    await this.drachtioWelcomeHandler.shutdown();
     
     // Terminate all active dialogs
     for (const [dialogId, dialog] of this.activeDialogs) {

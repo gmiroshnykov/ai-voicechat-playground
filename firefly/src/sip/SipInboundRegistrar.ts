@@ -1,14 +1,6 @@
 import { EventEmitter } from 'events';
+import Srf, { SrfRequest, SrfResponse } from 'drachtio-srf';
 import { createLogger, Logger } from '../utils/logger';
-
-// Extended SRF interface for registration handling
-interface ExtendedSrf {
-  connect(options: any): void;
-  on(event: string, handler: (...args: any[]) => void): void;
-  use(method: string, middleware: any): void;
-  register(handler: (req: any, res: any) => void): void;
-  disconnect(): void;
-}
 
 interface RegistrationInfo {
   type: 'register';
@@ -17,9 +9,10 @@ interface RegistrationInfo {
     uri: string;
     params: Record<string, string>;
   }>;
+  aor: string;
 }
 
-interface AuthenticatedRequest {
+interface AuthenticatedRequest extends SrfRequest {
   registration: RegistrationInfo;
   authorization: {
     scheme: string;
@@ -33,20 +26,16 @@ interface AuthenticatedRequest {
     nc?: string;
     cnonce?: string;
   };
-  get(header: string): string;
-  uri: string;
 }
 
-interface SipResponse {
-  send(status: number, options?: { headers?: Record<string, string> }): void;
-}
+interface SipResponse extends SrfResponse {}
 
 /**
  * SIP Inbound Registrar - accepts registrations from SIP clients (like Linphone)
  * This allows SIP clients to register with Firefly directly for calls
  */
 export class SipInboundRegistrar extends EventEmitter {
-  private readonly srf: ExtendedSrf;
+  private readonly srf: Srf;
   private readonly logger: Logger;
   private readonly registeredUsers = new Map<string, { contact: string; expires: Date }>();
 
@@ -57,7 +46,7 @@ export class SipInboundRegistrar extends EventEmitter {
     ['firefly', { password: 'password', realm: 'localhost' }]
   ]);
 
-  constructor(srf: ExtendedSrf) {
+  constructor(srf: Srf) {
     super();
     this.srf = srf;
     this.logger = createLogger({ 
@@ -103,8 +92,12 @@ export class SipInboundRegistrar extends EventEmitter {
       this.srf.use('register', regParser);
 
       // Handle authenticated REGISTER requests
-      this.srf.register((req: AuthenticatedRequest, res: SipResponse) => {
-        this.handleRegisterRequest(req, res);
+      this.srf.register((req: SrfRequest, res: SrfResponse) => {
+        if (!req.registration) {
+          return res.send(400, 'Registration info missing');
+        }
+        // After middleware processing, req has the required properties
+        this.handleRegisterRequest(req as AuthenticatedRequest, res as SipResponse);
       });
 
       this.logger.info('SIP registration handler configured');

@@ -23,7 +23,7 @@ let sipInboundRegistrar: SipInboundRegistrar | undefined;
 let sipHandler: SipHandler | undefined;
 
 async function startApplication(): Promise<void> {
-  logger.info('Starting Firefly', {
+  logger.info('Starting Firefly with configurable media server', {
     environment: config.environment,
     sipOutboundProvider: config.sipOutbound.provider,
     sipInboundEnabled: config.sipInbound.enabled,
@@ -36,10 +36,11 @@ async function startApplication(): Promise<void> {
 
   // Initialize SIP handler
   sipHandler = new SipHandler(srf, rtpManager, config);
+  await sipHandler.initialize();
 
   // Start inbound registrar if enabled (accepts registrations from SIP clients)
   if (config.sipInbound.enabled) {
-    sipInboundRegistrar = new SipInboundRegistrar(srf as any);
+    sipInboundRegistrar = new SipInboundRegistrar(srf);
     
     // Handle inbound registration events
     sipInboundRegistrar.on('user-registered', (username: string, contactUri: string) => {

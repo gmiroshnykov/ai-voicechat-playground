@@ -190,6 +190,12 @@ export function loadConfig(): AppConfig {
       aiAudio: aiAudioConfig,
       recording: recordingConfig,
       routing: routingConfig,
+      mediaServer: {
+        address: getOptionalEnv('MEDIA_SERVER_ADDRESS', '127.0.0.1'),
+        port: validatePort(getOptionalEnv('MEDIA_SERVER_PORT', '8021'), 'MEDIA_SERVER_PORT'),
+        secret: getOptionalEnv('MEDIA_SERVER_SECRET', 'ClueCon'),
+        enabled: getOptionalEnv('MEDIA_SERVER_ENABLED', 'true') === 'true'
+      },
       environment: getOptionalEnv('NODE_ENV', 'development'),
       logLevel: validateLogLevel(getOptionalEnv('LOG_LEVEL', 'info'))
     };

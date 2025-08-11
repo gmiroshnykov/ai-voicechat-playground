@@ -66,6 +66,14 @@ export interface RoutingConfig {
   defaultRoute: SessionType;
 }
 
+export interface MediaServerConfig {
+  address: string;
+  port: number;
+  secret: string;
+  enabled: boolean;
+}
+
+
 export const OPENAI_AGENT_NAME = 'Firefly Assistant';
 
 export const OPENAI_AGENT_INSTRUCTIONS = `You are a helpful voice assistant connected via telephone. Start the conversation in Ukrainian, but switch to English if the caller requests it or speaks English to you.
@@ -85,6 +93,7 @@ export interface AppConfig {
   aiAudio: AIAudioConfig;
   recording: RecordingConfig;
   routing: RoutingConfig;
+  mediaServer: MediaServerConfig;
   environment: string;
   logLevel: "trace" | "debug" | "info" | "warn" | "error";
 }
@@ -131,6 +140,12 @@ export interface EnvironmentVariables {
   RECORDING_FILENAME_PREFIX?: string;
   
   DEFAULT_ROUTE?: string;
+  
+  MEDIA_SERVER_ADDRESS?: string;
+  MEDIA_SERVER_PORT?: string;
+  MEDIA_SERVER_SECRET?: string;
+  MEDIA_SERVER_ENABLED?: string;
+  
   
   NODE_ENV?: string;
   LOG_LEVEL?: string;

@@ -1,11 +1,32 @@
 import { EventEmitter } from 'events';
-import { SrfClient, SipRegistrationState, RegistrationOptions, RequestOptions } from './types';
+import Srf from 'drachtio-srf';
+import { SipRegistrationState } from './types';
 import { SipOutboundConfig, DrachtioConfig } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { SipRegistrationError } from '../utils/errors';
 
+interface RegistrationOptions {
+  uri: string;
+  method: 'REGISTER';
+  headers: Record<string, string | string[]>;
+  auth?: {
+    username: string;
+    password: string;
+  };
+}
+
+interface RequestOptions {
+  uri: string;
+  method: string;
+  headers: Record<string, string | string[]>;
+  auth?: {
+    username: string;
+    password: string;
+  };
+}
+
 export class SipRegistrar extends EventEmitter {
-  private readonly srf: SrfClient;
+  private readonly srf: Srf;
   private readonly sipConfig: SipOutboundConfig;
   private readonly drachtioConfig: DrachtioConfig;
   private readonly logger: Logger;
@@ -16,7 +37,7 @@ export class SipRegistrar extends EventEmitter {
   private readonly retryDelay = 5000; // 5 seconds
   private readonly keepAliveInterval = 30000; // 30 seconds
 
-  constructor(srf: SrfClient, sipConfig: SipOutboundConfig, drachtioConfig: DrachtioConfig) {
+  constructor(srf: Srf, sipConfig: SipOutboundConfig, drachtioConfig: DrachtioConfig) {
     super();
     this.srf = srf;
     this.sipConfig = sipConfig;
