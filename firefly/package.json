@@ -26,6 +26,7 @@
   "dependencies": {
     "@openai/agents": "^0.0.10",
     "commander": "^14.0.0",
+    "drachtio-fsmrf": "^4.1.2",
     "drachtio-mw-digest-auth": "^0.3.3",
     "drachtio-mw-registration-parser": "^0.1.2",
     "drachtio-srf": "^5.0.10",
