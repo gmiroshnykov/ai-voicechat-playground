@@ -39,9 +39,9 @@ export class AudioStreamServer {
     try {
       // Import WebSocket dynamically to avoid errors if not installed yet
       const WebSocket = await import('ws');
-      
+
       this.server = new HttpServer();
-      this.wss = new WebSocket.WebSocketServer({ 
+      this.wss = new WebSocket.WebSocketServer({
         server: this.server,
         path: '/audio'
       });
@@ -61,7 +61,7 @@ export class AudioStreamServer {
             // Get the actual port assigned by the OS
             const address = this.server!.address();
             this.actualPort = typeof address === 'object' && address ? address.port : this.config.port || 0;
-            
+
             this.logger.info('Audio stream server started', {
               port: this.actualPort,
               host: this.config.host || 'localhost'
@@ -94,7 +94,7 @@ export class AudioStreamServer {
       if (this.wss) {
         this.wss.close(() => {
           this.logger.debug('WebSocket server closed');
-          
+
           // Close HTTP server
           if (this.server) {
             this.server.close(() => {
@@ -137,7 +137,7 @@ export class AudioStreamServer {
 
       // Create and store the connection
       this.connection = new AudioStreamConnection(ws, this.logger);
-      
+
       // Resolve the connection promise
       if (this.connectionResolve) {
         this.connectionResolve();
@@ -152,11 +152,11 @@ export class AudioStreamServer {
     if (this.connection) {
       return; // Already connected
     }
-    
+
     if (!this.connectionPromise) {
       throw new Error('Audio server not started');
     }
-    
+
     await this.connectionPromise;
   }
 
@@ -178,6 +178,16 @@ export class AudioStreamServer {
 
     this.logger.info('Starting audio stream', { audioFilePath });
     await this.connection!.streamAudio(audioFilePath);
+  }
+
+  /**
+   * Start echo mode - echoes all received audio back to FreeSWITCH
+   */
+  async startEchoStream(): Promise<void> {
+    await this.waitForConnection();
+
+    this.logger.info('Starting echo stream');
+    await this.connection!.startEchoMode();
   }
 
   /**

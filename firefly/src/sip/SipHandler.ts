@@ -7,6 +7,7 @@ import { AppConfig, SessionType } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RouteResolver } from './routing';
 import { DrachtioWelcomeHandler } from './DrachtioWelcomeHandler';
+import { DrachtioEchoHandler } from './DrachtioEchoHandler';
 import { setTimeout as delay } from 'timers/promises';
 
 export class SipHandler {
@@ -17,6 +18,7 @@ export class SipHandler {
   private readonly activeDialogs: Map<string, Dialog>;
   private readonly routeResolver: RouteResolver;
   private readonly drachtioWelcomeHandler: DrachtioWelcomeHandler;
+  private readonly drachtioEchoHandler: DrachtioEchoHandler;
 
   constructor(srf: Srf, rtpManager: RtpManager, config: AppConfig) {
     this.srf = srf;
@@ -26,6 +28,7 @@ export class SipHandler {
     this.activeDialogs = new Map();
     this.routeResolver = new RouteResolver(config.routing.defaultRoute);
     this.drachtioWelcomeHandler = new DrachtioWelcomeHandler(this.srf, this.config);
+    this.drachtioEchoHandler = new DrachtioEchoHandler(this.srf, this.config);
 
     // Set up INVITE handler
     this.srf.invite(this.handleInvite.bind(this));
@@ -34,6 +37,7 @@ export class SipHandler {
   public async initialize(): Promise<void> {
     try {
       await this.drachtioWelcomeHandler.initialize();
+      await this.drachtioEchoHandler.initialize();
       this.logger.info('SipHandler initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize SipHandler', error);
@@ -91,6 +95,22 @@ export class SipHandler {
         await delay(3000);
 
         await this.drachtioWelcomeHandler.handleWelcomeCall(req, res, callContext.callId);
+        return;
+      }
+
+      // Handle echo route with drachtio-fsmrf (with ring delay)
+      if (sessionType === 'echo') {
+        callLogger.info('Routing echo call to drachtio-fsmrf handler');
+
+        // Send 180 Ringing to make the phone ring
+        callLogger.info('Sending 180 Ringing response');
+        res.send(180, 'Ringing');
+
+        // Let the phone ring for 3 seconds before answering
+        callLogger.info('Letting phone ring for 3 seconds');
+        await delay(3000);
+
+        await this.drachtioEchoHandler.handleEchoCall(req, res, callContext.callId);
         return;
       }
 
@@ -394,8 +414,9 @@ export class SipHandler {
   public async shutdown(): Promise<void> {
     this.logger.debug('Shutting down SIP handler');
 
-    // Shutdown drachtio welcome handler
+    // Shutdown drachtio handlers
     await this.drachtioWelcomeHandler.shutdown();
+    await this.drachtioEchoHandler.shutdown();
 
     // Terminate all active dialogs
     for (const [dialogId, dialog] of this.activeDialogs) {

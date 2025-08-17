@@ -180,6 +180,51 @@ export class AudioStreamConnection {
   }
 
   /**
+   * Start echo mode - receives audio from FreeSWITCH and echoes it back
+   * This function sets up the bidirectional audio flow and returns when echo is stopped
+   */
+  async startEchoMode(): Promise<void> {
+    this.logger.info('Starting echo mode - will echo all received audio back to FreeSWITCH');
+
+    return new Promise<void>((resolve) => {
+      // Set up audio frame handler for incoming data
+      this.ws.on('message', (data: Buffer) => {
+        if (this.ws.readyState !== 1) { // Not open
+          this.logger.warn('Received audio but WebSocket is not open');
+          return;
+        }
+
+        try {
+          // Echo the received audio frame back immediately
+          this.ws.send(data);
+          
+          // Log periodically to avoid spam but confirm echo is working
+          if (Math.random() < 0.001) { // ~0.1% of frames
+            this.logger.debug('Echoing audio frame', { 
+              frameSize: data.length,
+              timestamp: Date.now()
+            });
+          }
+        } catch (error) {
+          this.logger.error('Error echoing audio frame', { error });
+        }
+      });
+
+      // Handle WebSocket close
+      this.ws.on('close', () => {
+        this.logger.info('Echo mode ended - WebSocket closed');
+        resolve();
+      });
+
+      // Handle WebSocket errors
+      this.ws.on('error', (error: Error) => {
+        this.logger.error('WebSocket error in echo mode', { error });
+        resolve();
+      });
+    });
+  }
+
+  /**
    * Close the WebSocket connection
    */
   close(): void {
