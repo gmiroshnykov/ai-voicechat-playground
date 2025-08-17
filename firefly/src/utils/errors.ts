@@ -38,23 +38,6 @@ export class SipCallError extends SipError {
   }
 }
 
-export class RtpError extends FireflyError {
-  constructor(message: string, code: string, context?: Record<string, unknown>) {
-    super(message, code, context);
-  }
-}
-
-export class RtpPortAllocationError extends RtpError {
-  constructor(message: string, context?: Record<string, unknown>) {
-    super(message, 'RTP_PORT_ALLOCATION_ERROR', context);
-  }
-}
-
-export class RtpSessionError extends RtpError {
-  constructor(message: string, context?: Record<string, unknown>) {
-    super(message, 'RTP_SESSION_ERROR', context);
-  }
-}
 
 export class CodecError extends FireflyError {
   constructor(message: string, context?: Record<string, unknown>) {

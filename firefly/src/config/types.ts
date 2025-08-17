@@ -21,12 +21,6 @@ export interface DrachtioConfig {
   sipPort: number;
 }
 
-export interface RtpConfig {
-  portMin: number;
-  portMax: number;
-  localIp: string;
-  jitterBufferMs: number;
-}
 
 export interface OpenAIConfig {
   apiKey: string;
@@ -85,7 +79,6 @@ export interface AppConfig {
   sipOutbound: SipOutboundConfig;
   sipInbound: SipInboundConfig;
   drachtio: DrachtioConfig;
-  rtp: RtpConfig;
   openai: OpenAIConfig;
   transcription: TranscriptionConfig;
   testAudio: TestAudioConfig;
@@ -114,8 +107,6 @@ export interface EnvironmentVariables {
   DRACHTIO_SIP_PORT?: string;
   
   LOCAL_IP?: string;
-  RTP_PORT_MIN?: string;
-  RTP_PORT_MAX?: string;
   JITTER_BUFFER_MS?: string;
   
   OPENAI_API_KEY?: string;

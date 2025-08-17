@@ -205,6 +205,13 @@ export class AudioStreamServer {
   }
 
   /**
+   * Get the current connection
+   */
+  getConnection(): AudioStreamConnection | undefined {
+    return this.connection;
+  }
+
+  /**
    * Get server status
    */
   getStatus(): { running: boolean; port?: number; connected: boolean; callId: string } {

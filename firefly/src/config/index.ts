@@ -36,13 +36,6 @@ function validatePort(value: string, name: string): number {
   return port;
 }
 
-function validateIpAddress(ip: string): string {
-  const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-  if (!ipRegex.test(ip)) {
-    throw new ConfigurationError(`Invalid IP address: ${ip}`);
-  }
-  return ip;
-}
 
 function validateLogLevel(level: string): "trace" | "debug" | "info" | "warn" | "error" {
   const validLevels = ["trace", "debug", "info", "warn", "error"];
@@ -101,22 +94,6 @@ export function loadConfig(): AppConfig {
       sipPort: validatePort(getOptionalEnv('DRACHTIO_SIP_PORT', '5060'), 'DRACHTIO_SIP_PORT')
     };
 
-    const rtpConfig = {
-      localIp: validateIpAddress(getRequiredEnv('LOCAL_IP')),
-      portMin: validatePort(getOptionalEnv('RTP_PORT_MIN', '10000'), 'RTP_PORT_MIN'),
-      portMax: validatePort(getOptionalEnv('RTP_PORT_MAX', '20000'), 'RTP_PORT_MAX'),
-      jitterBufferMs: validatePort(getOptionalEnv('JITTER_BUFFER_MS', '40'), 'JITTER_BUFFER_MS')
-    };
-
-    // Validate RTP port range
-    if (rtpConfig.portMin >= rtpConfig.portMax) {
-      throw new ConfigurationError('RTP_PORT_MIN must be less than RTP_PORT_MAX');
-    }
-    
-    // Validate jitter buffer range (10ms to 200ms for conversational quality)
-    if (rtpConfig.jitterBufferMs < 10 || rtpConfig.jitterBufferMs > 200) {
-      throw new ConfigurationError('JITTER_BUFFER_MS must be between 10 and 200 milliseconds');
-    }
 
     // OpenAI config requires explicit enabling even when key is present
     const openaiApiKey = process.env.OPENAI_API_KEY || '';
@@ -183,7 +160,6 @@ export function loadConfig(): AppConfig {
       sipOutbound: sipOutboundConfig,
       sipInbound: sipInboundConfig,
       drachtio: drachtioConfig,
-      rtp: rtpConfig,
       openai: openaiConfig,
       transcription: transcriptionConfig,
       testAudio: testAudioConfig,

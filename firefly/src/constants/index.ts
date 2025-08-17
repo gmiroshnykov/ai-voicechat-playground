@@ -13,28 +13,6 @@ export const CODEC_SILENCE_VALUES = {
   DEFAULT: 0xFF,
 } as const;
 
-/**
- * RTP protocol constants
- * These values are defined by RTP specification (RFC 3550)
- */
-export const RTP_CONSTANTS = {
-  /** Maximum SSRC value (32-bit unsigned integer) */
-  MAX_SSRC: 0xFFFFFFFF,
-  /** Maximum RTP sequence number (16-bit) */
-  MAX_SEQUENCE: 0xFFFF,
-  /** Maximum RTP timestamp value (32-bit unsigned integer) */
-  MAX_TIMESTAMP: 0xFFFFFFFF,
-  /** Sequence number wraparound mask (65536) */
-  SEQUENCE_WRAPAROUND: 0x10000,
-  /** Timestamp wraparound mask (2^32) */
-  TIMESTAMP_WRAPAROUND: 0x100000000,
-  /** RTP version bits mask */
-  VERSION_MASK: 0x3,
-  /** Bit shift for RTP version extraction */
-  VERSION_SHIFT: 6,
-  /** Half of 16-bit range for sequence number wraparound comparison */
-  SEQUENCE_HALF_RANGE: 32768,
-} as const;
 
 /**
  * Audio processing constants
@@ -86,31 +64,7 @@ export const WAV_CONSTANTS = {
   BITS_PER_SAMPLE: 8,
 } as const;
 
-/**
- * RTCP constants
- * Real-time Transport Control Protocol constants
- */
-export const RTCP_CONSTANTS = {
-  /** NTP epoch offset in milliseconds (from 1900-01-01 to 1970-01-01) */
-  NTP_EPOCH_OFFSET: 2208988800000,
-  /** Maximum NTP fraction value */
-  MAX_NTP_FRACTION: 0xFFFFFFFF,
-} as const;
 
-/**
- * SIP payload type constants
- * Standard RTP payload types for different codecs
- */
-export const SIP_PAYLOAD_TYPES = {
-  /** PCMU payload type */
-  PCMU: 0,
-  /** PCMA payload type */
-  PCMA: 8,
-  /** G.722 payload type */
-  G722: 9,
-  /** G.729 payload type */
-  G729: 18,
-} as const;
 
 /**
  * Buffer and timing constants
@@ -146,15 +100,3 @@ export const OPUS_CONSTANTS = {
   SILENCE_FRAME: new Uint8Array([0xf8, 0xff, 0xfe]),
 } as const;
 
-/**
- * Validation constants
- * Constants for codec and parameter validation
- */
-export const VALIDATION_CONSTANTS = {
-  /** Maximum RTP payload type */
-  MAX_PAYLOAD_TYPE: 127,
-  /** Minimum channel count */
-  MIN_CHANNELS: 1,
-  /** Maximum channel count */
-  MAX_CHANNELS: 8,
-} as const;

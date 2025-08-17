@@ -238,6 +238,13 @@ export class AudioStreamConnection {
   }
 
   /**
+   * Get the underlying WebSocket for direct access
+   */
+  getWebSocket(): any {
+    return this.ws;
+  }
+
+  /**
    * Sleep for specified milliseconds
    */
   private sleep(ms: number): Promise<void> {

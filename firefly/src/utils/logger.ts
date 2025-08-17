@@ -1,5 +1,4 @@
 import { config } from '../config';
-import { isFireflyError } from './errors';
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
@@ -73,28 +72,12 @@ class ConsoleLogger implements Logger {
 
   error(message: string, error?: unknown, context?: LogContext): void {
     if (this.shouldLog('error')) {
-      let errorContext: LogContext = { ...context };
+      const errorContext: LogContext = { 
+        ...context
+      };
       
-      if (error) {
-        if (isFireflyError(error)) {
-          errorContext = {
-            ...errorContext,
-            errorCode: error.code,
-            errorContext: error.context,
-            stack: error.stack
-          };
-        } else if (error instanceof Error) {
-          errorContext = {
-            ...errorContext,
-            errorMessage: error.message,
-            stack: error.stack
-          };
-        } else {
-          errorContext = {
-            ...errorContext,
-            error: String(error)
-          };
-        }
+      if (error !== undefined) {
+        errorContext.error = error;  // Just pass it through - JSON.stringify in formatMessage handles it perfectly
       }
       
       console.error(this.formatMessage('error', message, errorContext));

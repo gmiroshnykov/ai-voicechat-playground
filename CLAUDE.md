@@ -29,3 +29,4 @@ This file provides guidance to Claude Code when working with this VoIP-to-AI ser
 - `firefly/src/rtp/` - Audio processing pipeline
 - `firefly/src/sip/` - SIP protocol handling
 - `helm/firefly/` - Kubernetes deployment
+- Never add an "any" type without explicit permission.

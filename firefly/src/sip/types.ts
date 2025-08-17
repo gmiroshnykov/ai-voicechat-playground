@@ -1,4 +1,3 @@
-import { CodecInfo } from '../rtp/types';
 
 export interface SipHeaders {
   [key: string]: string | string[] | undefined;
@@ -61,6 +60,12 @@ export interface CallContext {
   to: string;
   diversion?: string;
   dialogId?: string;
+  codec?: {
+    name: string;
+    payload: number;
+    clockRate: number;
+    channels?: number;
+  };
 }
 
 export interface InviteRequest {
@@ -147,7 +152,3 @@ export interface SipRegistrationState {
   failureCount: number;
 }
 
-export interface ExtractedCodecInfo extends CodecInfo {
-  sdpPayload: number;
-  fmtp?: string;
-}

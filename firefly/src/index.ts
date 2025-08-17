@@ -1,7 +1,6 @@
 import Srf from 'drachtio-srf';
 import { Command } from 'commander';
 import { config } from './config';
-import { RtpManager } from './rtp/RtpManager';
 import { SipRegistrar } from './sip/SipRegistrar';
 import { SipInboundRegistrar } from './sip/SipInboundRegistrar';
 import { SipHandler } from './sip/SipHandler';
@@ -11,13 +10,12 @@ import { logger } from './utils/logger';
 const program = new Command();
 program
   .name('firefly')
-  .description('SIP/RTP service with OpenAI Realtime API integration')
+  .description('SIP service with OpenAI Realtime API integration')
   .version('1.0.0')
   .parse();
 
 // Create main components
 const srf = new Srf();
-const rtpManager = new RtpManager(config.rtp);
 let sipRegistrar: SipRegistrar | undefined;
 let sipInboundRegistrar: SipInboundRegistrar | undefined;
 let sipHandler: SipHandler | undefined;
@@ -35,7 +33,7 @@ async function startApplication(): Promise<void> {
   await connectToDrachtio();
 
   // Initialize SIP handler
-  sipHandler = new SipHandler(srf, rtpManager, config);
+  sipHandler = new SipHandler(srf, config);
   await sipHandler.initialize();
 
   // Start inbound registrar if enabled (accepts registrations from SIP clients)
@@ -86,7 +84,6 @@ async function startApplication(): Promise<void> {
   
   logger.info('Firefly started successfully', {
     sipEndpoint,
-    rtpPorts: `${config.rtp.portMin}-${config.rtp.portMax}`,
     mode: sipMode.join(' + ') || 'no-sip-registration'
   });
 }
@@ -139,8 +136,6 @@ async function shutdown(exitCode: number = 0): Promise<void> {
       await sipHandler.shutdown();
     }
 
-    // Shutdown RTP manager
-    await rtpManager.shutdown();
 
     // Disconnect from drachtio
     srf.disconnect();
