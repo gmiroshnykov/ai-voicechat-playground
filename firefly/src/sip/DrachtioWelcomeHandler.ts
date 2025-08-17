@@ -153,9 +153,13 @@ export class DrachtioWelcomeHandler {
       logger.error('Error in per-call WebSocket audio streaming', { error, callId });
     } finally {
       try {
-        // Always stop the audio fork
-        await endpoint.api(`uuid_audio_fork ${endpoint.uuid} stop`);
-        logger.debug('Audio fork stopped via direct API');
+        // Only stop the audio fork if the endpoint is still connected
+        if (endpoint.connected) {
+          await endpoint.api(`uuid_audio_fork ${endpoint.uuid} stop`);
+          logger.debug('Audio fork stopped via direct API');
+        } else {
+          logger.debug('Endpoint already disconnected, skipping audio fork stop');
+        }
       } catch (stopError) {
         logger.error('Error stopping audio fork', { 
           error: stopError, 
