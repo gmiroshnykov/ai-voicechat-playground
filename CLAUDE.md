@@ -12,8 +12,8 @@ This file provides guidance to Claude Code when working with this VoIP-to-AI ser
 ## Critical Technical Constraints
 
 - **Never try to make Node.js real-time.** Accept that setTimeout() will drift and work around it with adaptive algorithms instead of precision timing.
-- **Use stream-based processing.** The system uses Node.js Transform streams for the audio pipeline.
-- **Use adaptive RTP scheduling.** Packets are scheduled based on buffer depth, not fixed timing intervals.
+- **Use FreeSWITCH for media processing.** The system uses FreeSWITCH via drachtio-fsmrf for professional media handling, with WebSocket streams for application integration.
+- **FreeSWITCH handles RTP/media.** Let FreeSWITCH manage packet scheduling, jitter buffering, codec negotiation, and telephony protocols.
 - **Let errors bubble up** unless you can meaningfully handle them (retries, fallbacks, adding context).
 - **Avoid generic try/catch blocks** that only log errors. Either add meaningful context or let them bubble up.
 - **Prefer enums/string literals over boolean variables** for configuration (e.g., `SIP_OUTBOUND_PROVIDER="kyivstar"` instead of `USE_KYIVSTAR=true`).
@@ -26,7 +26,7 @@ This file provides guidance to Claude Code when working with this VoIP-to-AI ser
 
 ## Key Directories
 
-- `firefly/src/rtp/` - Audio processing pipeline
+- `firefly/src/audio/` - WebSocket audio streaming and OpenAI integration
 - `firefly/src/sip/` - SIP protocol handling
 - `helm/firefly/` - Kubernetes deployment
 - Never add an "any" type without explicit permission.

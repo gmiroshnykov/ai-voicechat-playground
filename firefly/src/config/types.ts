@@ -107,7 +107,6 @@ export interface EnvironmentVariables {
   DRACHTIO_SIP_PORT?: string;
   
   LOCAL_IP?: string;
-  JITTER_BUFFER_MS?: string;
   
   OPENAI_API_KEY?: string;
   OPENAI_ENABLED?: string;

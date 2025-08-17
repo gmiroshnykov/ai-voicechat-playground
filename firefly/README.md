@@ -6,12 +6,12 @@ A production-ready SIP service built with TypeScript that bridges telephone call
 
 - **SIP Registration**: Registers as a SIP endpoint with any SIP server
 - **Call Handling**: Accepts incoming SIP calls with proper SDP negotiation
-- **OpenAI Integration**: Bridges telephone calls directly to OpenAI Realtime API with G.711 support
-- **Codec Support**: OPUS, PCMU (G.711 μ-law), PCMA (G.711 A-law), G.722
-- **NAT Traversal**: Symmetric RTP/RTCP with dynamic latching
-- **RTCP Reports**: Sends periodic sender reports for call quality
+- **FreeSWITCH Integration**: Professional media server via drachtio-fsmrf for robust telephony features
+- **OpenAI Integration**: Real-time AI conversation bridging via WebSocket audio streams
+- **WebSocket Audio Streaming**: Bidirectional audio streaming between FreeSWITCH and application services
+- **Call Recording**: Comprehensive recording capabilities with metadata and flexible output formats
 - **Multi-tenant Support**: Extracts call context from Diversion headers
-- **Production Ready**: Built for Kyivstar VoIP integration with proper error handling
+- **Production Ready**: Built for carrier integration with proper error handling
 - **Type Safety**: Full TypeScript with strict mode for reliability
 
 ## Architecture
@@ -19,34 +19,28 @@ A production-ready SIP service built with TypeScript that bridges telephone call
 ```
 Caller → SIP Server → drachtio-server → Firefly (TypeScript)
            ↓                                    ↓
-         [RTP] ←────── G.711 PCMA ──────── [RTP Handler]
-                                               ↓
-                                     OpenAI Realtime API
-                                        (WebSocket)
+      FreeSWITCH ←──── WebSocket Audio ──── AudioStreamServer
+           ↓                                    ↓
+      Media Processing                   OpenAI Realtime API
+      (Recording, Echo)                    (WebSocket)
 ```
 
 ### Key Components
 
 - **Config Module**: Type-safe environment configuration with validation
 - **SIP Module**: Registration and call handling with drachtio-srf  
-- **RTP Module**: Modular RTP/RTCP session management with OpenAI bridge
-- **OpenAI Module**: WebSocket connection to Realtime API with G.711 audio streaming
+- **Audio Module**: WebSocket audio streaming and OpenAI integration
+- **FreeSWITCH Handlers**: Route-specific handlers (welcome, echo, chat) via drachtio-fsmrf
 - **Utils**: Structured logging and custom error handling
 
 ## Prerequisites
 
 1. **Node.js** - Version 18 or higher
 2. **TypeScript** - Version 5.x (installed as dev dependency)
-3. **Drachtio Server** - You'll need drachtio-server running:
+3. **Drachtio Server** - SIP server for protocol handling
+4. **FreeSWITCH** - Media server for audio processing
 
-   ```bash
-   # Option 1: Docker (recommended for testing)
-   docker run -d --name drachtio --net=host \
-     drachtio/drachtio-server:latest \
-     drachtio --contact "sip:*:5060;transport=udp" --loglevel info
-
-   # Option 2: Build from source (see drachtio docs)
-   ```
+The complete stack is provided via Kubernetes/Helm deployment.
 
 ## Installation
 
@@ -63,49 +57,41 @@ npm run build
 Environment variables for development. Key variables:
 
 ### Core Settings
-- `SIP_PROVIDER`: "freeswitch" (default) or "kyivstar"
-- `LOCAL_IP`: Your machine's IP address (required)
+- `SIP_OUTBOUND_PROVIDER`: "kyivstar" or "disabled" (default: disabled)
+- `SIP_INBOUND_ENABLED`: Accept SIP registrations (default: true)
 - `LOG_LEVEL`: trace, debug, info, warn, error (default: info)
 
 ### SIP Configuration
-- `SIP_DOMAIN`: SIP server domain
-- `SIP_USERNAME`: SIP registration username
-- `SIP_PASSWORD`: SIP registration password
-- `SIP_PORT`: SIP server port (default: 5060)
+- `SIP_OUTBOUND_DOMAIN`: SIP server domain (for outbound registration)
+- `SIP_OUTBOUND_USERNAME`: SIP registration username
+- `SIP_OUTBOUND_PASSWORD`: SIP registration password
+- `SIP_OUTBOUND_PORT`: SIP server port (default: 5060)
 
 ### Drachtio Configuration
 - `DRACHTIO_HOST`: drachtio-server host (default: 127.0.0.1)
 - `DRACHTIO_PORT`: drachtio-server port (default: 9022)
 - `DRACHTIO_SECRET`: drachtio-server secret (default: cymru)
 
-### RTP Configuration
-- `RTP_PORT_MIN`: Minimum RTP port (default: 10000)
-- `RTP_PORT_MAX`: Maximum RTP port (default: 20000)
+### FreeSWITCH Configuration
+- `MEDIA_SERVER_ADDRESS`: FreeSWITCH host (default: 127.0.0.1)
+- `MEDIA_SERVER_PORT`: FreeSWITCH event socket port (default: 8021)
+- `MEDIA_SERVER_SECRET`: FreeSWITCH event socket password (default: ClueCon)
 
 ### OpenAI Configuration
 - `OPENAI_API_KEY`: Your OpenAI API key (required for chat mode)
+- `OPENAI_ENABLED`: Enable OpenAI integration (default: false)
 
-### Provider-Specific Configuration
-
-**FreeSWITCH (Development)**:
-- Default settings work out of the box
-- Add user to FreeSWITCH directory
-
-**Kyivstar (Production)**:
-- Set `SIP_PROVIDER="kyivstar"`
-- Configure credentials via Kubernetes Secrets
+### Call Routing
+- `DEFAULT_ROUTE`: Default route for external calls (welcome, echo, chat)
 
 ## Running
 
 ```bash
-# Echo mode (default) - RTP packets are echoed back
-npm start
-
-# Chat mode - Bridge calls to OpenAI Realtime API  
-npm start -- --mode chat
+# Development mode
+npm run dev
 
 # Production (pre-built)
-node dist/index.js --mode chat
+npm start
 
 # Type checking only
 npm run typecheck
@@ -114,36 +100,22 @@ npm run typecheck
 npm run clean
 ```
 
-### Modes
+### Route Types
 
-**Echo Mode** (`--mode echo` or default):
-- Traditional RTP echo service
+**Welcome Route** (`sip:welcome@domain`):
+- FreeSWITCH audio file playback via drachtio-fsmrf
+- Test audio streaming and codec validation
+
+**Echo Route** (`sip:echo@domain`):
+- FreeSWITCH audio loopback via drachtio-fsmrf
 - Good for VoIP testing and connectivity verification
 
-**Chat Mode** (`--mode chat`):
+**Chat Route** (`sip:chat@domain`):
 - Bridges phone calls to OpenAI Realtime API
-- Requires `OPENAI_API_KEY` environment variable
+- Requires `OPENAI_ENABLED=true` and `OPENAI_API_KEY`
 - AI agent starts conversation in Ukrainian
-- Supports hang up via AI assistant
-- No transcoding - direct G.711 PCMA audio streaming
-
-## Testing with FreeSWITCH
-
-1. Add a user in FreeSWITCH's `directory/default.xml`:
-   ```xml
-   <user id="firefly">
-     <params>
-       <param name="password" value="password"/>
-     </params>
-   </user>
-   ```
-
-2. Start Firefly:
-   ```bash
-   npm start
-   ```
-
-3. Make a call to the `firefly` extension from any SIP client
+- Supports AI-controlled call termination
+- Real-time audio streaming via WebSocket
 
 ## Development
 
@@ -156,17 +128,19 @@ src/
 │   ├── index.ts         # Configuration loader
 │   └── types.ts         # Config type definitions
 ├── sip/
-│   ├── SipHandler.ts    # INVITE handling
-│   ├── SipRegistrar.ts  # Registration management
+│   ├── SipHandler.ts    # Main INVITE routing
+│   ├── SipRegistrar.ts  # Outbound registration management
+│   ├── SipInboundRegistrar.ts # Inbound registration handling
+│   ├── DrachtioWelcomeHandler.ts # Welcome route handler
+│   ├── DrachtioEchoHandler.ts # Echo route handler
+│   ├── DrachtioOpenAIHandler.ts # Chat route handler
+│   ├── routing.ts       # Route resolution logic
 │   └── types.ts         # SIP-related types
-├── rtp/
-│   ├── RtpSession.ts    # Base RTP session class
-│   ├── RtpEchoSession.ts # Echo implementation
-│   ├── RtpBridgeSession.ts # OpenAI bridge implementation
-│   ├── RtpManager.ts    # Port allocation & lifecycle
-│   ├── RtcpHandler.ts   # RTCP reports
-│   ├── CodecHandler.ts  # Codec-specific logic
-│   └── types.ts         # RTP/RTCP types
+├── audio/
+│   ├── AudioStreamServer.ts # WebSocket server for FreeSWITCH
+│   ├── AudioStreamConnection.ts # Individual WebSocket connections
+│   ├── OpenAIBridgeConnection.ts # OpenAI Realtime API bridge
+│   └── TranscriptionManager.ts # Real-time transcription
 ├── utils/
 │   ├── logger.ts        # Structured logging
 │   └── errors.ts        # Custom error classes
@@ -174,15 +148,15 @@ src/
     └── external.d.ts    # External library types
 ```
 
-### OpenAI Bridge Implementation
+### FreeSWITCH Integration
 
-The OpenAI Realtime API integration includes:
+The FreeSWITCH integration includes:
 
-1. **RtpBridgeSession**: Extends `RtpSession` with OpenAI WebSocket connection
-2. **Audio Processing**: Direct G.711 PCMA streaming without transcoding
-3. **Session Management**: Proper connection lifecycle and error handling
-4. **AI Tools**: Hang up functionality for conversation completion
-5. **Multi-language**: Starts in Ukrainian, switches to English on request
+1. **drachtio-fsmrf**: Professional telephony features via FreeSWITCH
+2. **WebSocket Audio Streaming**: Real-time bidirectional audio via `uuid_audio_fork`
+3. **Route-Specific Handlers**: Welcome, echo, and chat implementations
+4. **Professional Media Processing**: FreeSWITCH handles codecs, jitter buffering, recording
+5. **OpenAI Bridge**: WebSocket audio bridge to Realtime API with transcription
 
 ### Type Safety
 
@@ -196,28 +170,39 @@ The project uses TypeScript strict mode with:
 
 The application provides structured JSON logging with:
 - Call context (callId, from, to, diversion)
-- RTP statistics (packets, bytes, jitter)
-- Session lifecycle events
+- FreeSWITCH session events and audio statistics
+- WebSocket connection lifecycle
+- OpenAI Realtime API integration events
 - Error tracking with stack traces
 
 ## Features Implemented
 
-- [x] OpenAI Realtime API integration with G.711 PCMA
+- [x] FreeSWITCH integration via drachtio-fsmrf
+- [x] WebSocket audio streaming with OpenAI Realtime API
 - [x] Ukrainian/English language switching
 - [x] AI-controlled call termination
-- [x] Real-time audio streaming without transcoding
-- [x] Proper cleanup and resource management
+- [x] Real-time transcription and conversation management
+- [x] Professional telephony features via FreeSWITCH
+- [x] Call recording and metadata preservation
+
+## Architecture Benefits
+
+- **Professional Media Handling**: FreeSWITCH provides enterprise-grade telephony features
+- **Simplified Development**: No custom RTP/RTCP implementation needed
+- **Reliable Audio Processing**: FreeSWITCH handles codec negotiation, jitter buffering, packet loss recovery
+- **Scalable WebSocket Integration**: Per-call isolated audio streaming
+- **Production Ready**: Built on proven telephony infrastructure
 
 ## Future Enhancements
 
-- [ ] WebSocket control interface
-- [ ] Prometheus metrics export  
-- [ ] Dynamic codec transcoding
-- [ ] DTMF detection and handling
+- [ ] WebSocket control interface for call management
+- [ ] Prometheus metrics export for monitoring
+- [ ] DTMF detection and handling via FreeSWITCH
 - [ ] Conference bridge support
 - [ ] REST API for call control
 - [ ] Call transfer capabilities
+- [ ] Advanced recording options (stereo, metadata)
 
 ## License
 
-ISC
+AGPL-3.0

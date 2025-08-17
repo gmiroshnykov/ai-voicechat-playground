@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && npm run test:run",
     "test:run": "node --test 'dist/test/**/*.test.js'",
-    "test:rtp-timing": "npm run build && node dist/test/runRtpTimingTest.js"
+    "test:audio": "npm run build && node dist/test/runAudioTest.js"
   },
   "keywords": [],
   "author": "",
@@ -31,7 +31,6 @@
     "drachtio-mw-digest-auth": "^0.3.3",
     "drachtio-mw-registration-parser": "^0.1.2",
     "drachtio-srf": "^5.0.10",
-    "rtp.js": "^0.15.2",
     "sdp-transform": "^2.15.0",
     "ws": "^8.17.1"
   }

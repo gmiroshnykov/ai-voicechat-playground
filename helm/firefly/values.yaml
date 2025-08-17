@@ -76,10 +76,6 @@ sipInbound:
   enabled: true
   port: 5062
 
-# RTP media configuration
-rtpPortMin: 10000
-rtpPortMax: 10100
-rtpJitterBufferMs: 60
 
 # Call recording configuration
 recordingEnabled: true

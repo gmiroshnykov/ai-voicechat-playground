@@ -157,7 +157,7 @@ export class OpenAIBridgeConnection extends EventEmitter {
             audio: base64Audio
           });
         } catch (error) {
-          this.logger.error('Error forwarding audio to OpenAI', { error });
+          this.logger.error('Error forwarding audio to OpenAI', error);
         }
       }
     });

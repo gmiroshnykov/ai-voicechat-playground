@@ -25,11 +25,6 @@ data:
   SIP_INBOUND_ENABLED: {{ .Values.sipInbound.enabled | quote }}
   SIP_INBOUND_PORT: {{ .Values.sipInbound.port | quote }}
   
-  # RTP configuration
-  RTP_PORT_MIN: {{ .Values.rtpPortMin | quote }}
-  RTP_PORT_MAX: {{ .Values.rtpPortMax | quote }}
-  JITTER_BUFFER_MS: {{ .Values.rtpJitterBufferMs | quote }}
-  
   # Recording configuration
   CALL_RECORDING_ENABLED: {{ .Values.recordingEnabled | quote }}
   CALL_RECORDINGS_PATH: {{ .Values.recordingPath | quote }}

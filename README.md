@@ -6,13 +6,12 @@ An experimental VoIP service connecting telephone calls to OpenAI's Realtime API
 
 - **Direct SIP Registration:** Built-in SIP registrar accepting client registrations (Linphone, softphones)
 - **Intelligent Call Routing:** SIP URI-based routing (`sip:chat@domain`, `sip:welcome@domain`) with configurable defaults
-- **Stream-Based Audio Pipeline:** Node.js Transform streams for composable real-time audio processing
-- **Adaptive RTP Scheduling:** Buffer-depth based packet scheduling (not fixed timing) for optimal flow control
-- **Advanced Jitter Buffer:** Packet reordering, loss recovery, and comfort noise generation
-- **Call Recording:** Timestamp-synchronized stereo recording with RTP metadata preservation
+- **FreeSWITCH Media Server:** Professional media handling with drachtio-fsmrf integration for robust audio processing
+- **WebSocket Audio Streaming:** Real-time bidirectional audio streaming between FreeSWITCH and application services
+- **Call Recording:** Comprehensive call recording with metadata preservation and flexible format options
 - **Call Context Preservation:** Caller ID and call metadata extraction (via Diversion headers)
-- **Multi-Provider Support:** Direct SIP mode, Kyivstar, or external VoIP providers with symmetric RTP support
-- **Audio Processing Features:** AI tempo adjustment, codec negotiation, and NAT traversal
+- **Multi-Provider Support:** Direct SIP mode, Kyivstar, or external VoIP providers with FreeSWITCH media handling
+- **Audio Processing Features:** AI tempo adjustment with FreeSWITCH handling codec negotiation and RTP management
 
 *Note: Multi-tenant routing and production reliability features are designed but require further testing with real carrier deployments.*
 
@@ -38,21 +37,28 @@ tilt up
 
 ### Firefly VoIP Service ([firefly/](firefly/))
 The main experimental VoIP service - TypeScript-based SIP server with built-in registrar:
-- **Stream-Based Architecture:** Composable audio processing pipeline using Node.js Transform streams
+- **FreeSWITCH Integration:** Professional media server via drachtio-fsmrf for robust telephony features
 - **Direct SIP Registration:** Accepts registrations from SIP clients (no external PBX needed)
-- **Multi-Provider Support:** Direct mode, Kyivstar VoIP, or external SIP providers with symmetric RTP
-- **OpenAI Integration:** Real-time AI conversation bridging with tempo adjustment
-- **Advanced Audio Processing:** G.711 PCMA/PCMU, OPUS support with adaptive jitter buffer and packet loss recovery
-- **Intelligent RTP Scheduling:** Buffer-depth based adaptive scheduling for optimal audio flow
-- **Call Recording:** Timestamp-synchronized stereo recording with complete metadata
-- **NAT Traversal:** RTP latching, symmetric RTP support, and RTCP handling
+- **WebSocket Audio Bridge:** Real-time audio streaming between FreeSWITCH and application services
+- **OpenAI Integration:** Real-time AI conversation bridging with WebSocket audio streams
+- **Professional Audio Handling:** FreeSWITCH manages G.711 PCMA/PCMU, codec negotiation, jitter buffering, and packet loss recovery
+- **Call Recording:** Comprehensive recording capabilities with metadata and flexible output formats
+- **Media Server Features:** FreeSWITCH handles RTP/RTCP, NAT traversal, and telephony protocols
 
 ### Drachtio SIP Server
 High-performance SIP server handling protocol operations:
 - SIP message parsing and routing
 - Authentication and registration management  
-- Media negotiation and RTP handling
-- Managed via Docker Compose
+- Media negotiation and session control
+- Managed via Kubernetes with Helm
+
+### FreeSWITCH Media Server
+Professional media server providing telephony features:
+- RTP/RTCP media handling and processing
+- Codec transcoding and negotiation
+- Jitter buffering and packet loss recovery
+- Audio recording and playback capabilities
+- Integrated via drachtio-fsmrf
 
 ### Audio Test Files ([audio/](audio/))
 Sample audio files for testing and development.
@@ -102,11 +108,11 @@ ai-voicechat-playground/
 - **Default Route**: External calls (phone numbers) route to configurable default (welcome/echo/chat)  
 - **Route Types**:
   - `chat` - OpenAI Realtime API conversations (requires OpenAI API key + `OPENAI_ENABLED=true`)
-  - `echo` - Audio loopback testing for debugging RTP/codec issues
-  - `welcome` - Test audio playback with tempo adjustment for codec/timing validation
-- Built-in silence generation and comfort noise for packet loss scenarios
-- Comprehensive RTP statistics and jitter buffer monitoring  
-- G.711 PCMA/PCMU support for minimal latency
+  - `echo` - Audio loopback testing via FreeSWITCH for debugging codec/media issues
+  - `welcome` - Test audio playback with tempo adjustment via FreeSWITCH audio streaming
+- FreeSWITCH handles silence generation, comfort noise, and packet loss recovery
+- Professional telephony features including comprehensive media statistics and monitoring
+- Full codec support (G.711 PCMA/PCMU, G.722, OPUS) with automatic negotiation
 
 ## Documentation
 
@@ -128,7 +134,7 @@ This project implements a complete SIP-to-AI bridge with both direct registratio
 
 - ✅ **Direct SIP registration** accepting connections from standard SIP clients
 - ✅ **Basic PSTN-to-AI bridging** with personal VoIP provider testing
-- ✅ **Sophisticated packet handling** including jitter buffer and loss recovery
+- ✅ **Professional media handling** via FreeSWITCH with enterprise-grade telephony features
 - ✅ **Call recording and metadata extraction** 
 - ✅ **Multi-provider architecture** supporting direct, Kyivstar, and external modes
 - ✅ **Docker deployment** with service orchestration
