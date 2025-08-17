@@ -7,6 +7,7 @@ import { AppConfig, SessionType } from '../config/types';
 import { createLogger, Logger } from '../utils/logger';
 import { RouteResolver } from './routing';
 import { DrachtioWelcomeHandler } from './DrachtioWelcomeHandler';
+import { setTimeout as delay } from 'timers/promises';
 
 export class SipHandler {
   private readonly srf: Srf;
@@ -25,7 +26,7 @@ export class SipHandler {
     this.activeDialogs = new Map();
     this.routeResolver = new RouteResolver(config.routing.defaultRoute);
     this.drachtioWelcomeHandler = new DrachtioWelcomeHandler(this.srf, this.config);
-    
+
     // Set up INVITE handler
     this.srf.invite(this.handleInvite.bind(this));
   }
@@ -43,7 +44,7 @@ export class SipHandler {
   private async handleInvite(req: SrfRequest, res: SrfResponse): Promise<void> {
     const callContext = this.extractCallContext(req);
     const callLogger = this.logger.child({ callId: callContext.callId });
-    
+
     callLogger.info('Incoming call', {
       from: callContext.from,
       to: callContext.to,
@@ -53,7 +54,7 @@ export class SipHandler {
     try {
       // Parse offered SDP
       const offer = sdpTransform.parse(req.body) as ParsedSdp;
-      
+
       const audioMedia = offer.media.find(m => m.type === 'audio');
 
       if (!audioMedia) {
@@ -70,16 +71,25 @@ export class SipHandler {
       const route = this.routeResolver.extractRoute(callContext.to);
       const sessionType = this.routeResolver.resolveSessionType(route);
       const routeDescription = this.routeResolver.getRouteDescription(route);
-      
+
       callLogger.info('Route resolved', {
         route,
         sessionType,
         description: routeDescription
       });
 
-      // Handle welcome route with drachtio-fsmrf
+      // Handle welcome route with drachtio-fsmrf (with ring delay)
       if (sessionType === 'welcome') {
         callLogger.info('Routing welcome call to drachtio-fsmrf handler');
+
+        // Send 180 Ringing to make the phone ring
+        callLogger.info('Sending 180 Ringing response');
+        res.send(180, 'Ringing');
+
+        // Let the phone ring for 3 seconds before answering
+        callLogger.info('Letting phone ring for 3 seconds');
+        await delay(3000);
+
         await this.drachtioWelcomeHandler.handleWelcomeCall(req, res, callContext.callId);
         return;
       }
@@ -99,8 +109,8 @@ export class SipHandler {
       const codecInfo = this.extractCodecInfo(audioMedia, sessionType);
       if (!codecInfo) {
         const supportedCodecs = (sessionType === 'chat') ? 'PCMA, PCMU' : 'OPUS, PCMU, PCMA, G722';
-        callLogger.error('No supported codec in offer', { 
-          sessionType, 
+        callLogger.error('No supported codec in offer', {
+          sessionType,
           supportedCodecs,
           offered: offeredCodecs
         });
@@ -116,7 +126,7 @@ export class SipHandler {
       // Get remote RTP details
       const remoteAddr = offer.connection?.ip || offer.origin.address;
       const remotePort = audioMedia.port;
-      
+
       // Create RTP session
       const rtpSession = await this.rtpManager.createSession({
         remoteAddress: remoteAddr,
@@ -143,11 +153,11 @@ export class SipHandler {
           } catch (error) {
             callLogger.error('Error flushing jitter buffer during hangup', error);
           }
-          
+
           // Give time for the flushed audio to be processed
           // This ensures the complete conversation including final caller words is captured
-          await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 500ms
-          
+          await delay(500);
+
           // Then stop the RTP session to close OpenAI connection
           try {
             await this.rtpManager.destroySession(callContext.callId);
@@ -155,7 +165,7 @@ export class SipHandler {
           } catch (error) {
             callLogger.error('Error destroying RTP session during hang up', error);
           }
-          
+
           // Finally destroy the dialog to end the call
           if (callContext.dialogId) {
             const dialog = this.activeDialogs.get(callContext.dialogId);
@@ -164,10 +174,10 @@ export class SipHandler {
               return;
             }
           }
-          
+
           // Fallback: log that we couldn't find the dialog
-          callLogger.warn('Could not find dialog to hang up call', { 
-            dialogId: callContext.dialogId 
+          callLogger.warn('Could not find dialog to hang up call', {
+            dialogId: callContext.dialogId
           });
         }
       });
@@ -240,21 +250,21 @@ export class SipHandler {
     const supportedCodecs = (sessionType === 'chat')
       ? ['pcma', 'pcmu']  // OpenAI only supports G.711 A-law and μ-law
       : ['opus', 'pcmu', 'pcma', 'g722'];  // Echo mode supports all codecs
-    
+
     // Standard payload type mappings (RFC 3551)
     const standardPayloads: { [key: number]: { codec: string, rate: number } } = {
       0: { codec: 'pcmu', rate: 8000 },     // G.711 μ-law
-      8: { codec: 'pcma', rate: 8000 },     // G.711 A-law  
+      8: { codec: 'pcma', rate: 8000 },     // G.711 A-law
       18: { codec: 'g729', rate: 8000 },    // G.729
       9: { codec: 'g722', rate: 8000 }      // G.722
     };
-    
+
     // Check standard payload types first
     const allPayloads = audioMedia.payloads?.split(' ').map((p: string) => parseInt(p, 10)) || [];
     for (const payload of allPayloads) {
       if (standardPayloads[payload]) {
         const { codec, rate } = standardPayloads[payload];
-        
+
         if (supportedCodecs.includes(codec)) {
           const codecInfo: ExtractedCodecInfo = {
             name: codec.toUpperCase(),
@@ -267,11 +277,11 @@ export class SipHandler {
         }
       }
     }
-    
+
     // Check dynamic payload types from RTP map
     for (const rtpInfo of audioMedia.rtp) {
       const codecName = rtpInfo.codec.toLowerCase();
-      
+
       if (supportedCodecs.includes(codecName)) {
         const codecInfo: ExtractedCodecInfo = {
           name: codecName.toUpperCase(),
@@ -362,7 +372,7 @@ export class SipHandler {
     // Handle call termination
     dialog.on('destroy', async () => {
       logger.info('Call ended');
-      
+
       // Destroy RTP session (if not already destroyed by hang up callback)
       try {
         const session = this.rtpManager.getSession(context.callId);
@@ -383,10 +393,10 @@ export class SipHandler {
 
   public async shutdown(): Promise<void> {
     this.logger.debug('Shutting down SIP handler');
-    
+
     // Shutdown drachtio welcome handler
     await this.drachtioWelcomeHandler.shutdown();
-    
+
     // Terminate all active dialogs
     for (const [dialogId, dialog] of this.activeDialogs) {
       try {
@@ -395,7 +405,7 @@ export class SipHandler {
         this.logger.error('Error destroying dialog', error, { dialogId });
       }
     }
-    
+
     this.activeDialogs.clear();
   }
 

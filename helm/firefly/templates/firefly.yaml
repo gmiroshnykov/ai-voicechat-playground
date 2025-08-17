@@ -27,6 +27,11 @@ spec:
         image: {{ .Values.fireflyImageRepository }}:{{ .Values.fireflyImageTag }}
         imagePullPolicy: {{ .Values.fireflyImagePullPolicy }}
         command: ["node", "dist/index.js"]
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
         envFrom:
         - configMapRef:
             name: firefly-config

@@ -73,7 +73,6 @@ export interface MediaServerConfig {
   enabled: boolean;
 }
 
-
 export const OPENAI_AGENT_NAME = 'Firefly Assistant';
 
 export const OPENAI_AGENT_INSTRUCTIONS = `You are a helpful voice assistant connected via telephone. Start the conversation in Ukrainian, but switch to English if the caller requests it or speaks English to you.

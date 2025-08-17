@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import dgram from 'dgram';
 import { RtpWelcomeSession, RtpWelcomeSessionConfig } from '../rtp/RtpWelcomeSession';
+import { setTimeout as delay } from 'timers/promises';
 
 describe('RtpWelcomeSession', () => {
   test('should work with adaptive scheduler', async () => {
@@ -46,7 +47,7 @@ describe('RtpWelcomeSession', () => {
       await session.start();
       
       // Let it run for a short time
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await delay(200);
       
       await session.stop();
       
@@ -118,7 +119,7 @@ describe('RtpWelcomeSession', () => {
       await session.start();
       
       // Let it run for a controlled time
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await delay(300);
       
       await session.stop();
       const endTime = Date.now();
@@ -168,7 +169,7 @@ describe('RtpWelcomeSession', () => {
       await session.start();
       
       // Wait briefly to ensure initialization completes
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await delay(100);
       
       // The session should start successfully with tempo adjustment
       // This tests that the configuration is properly applied and the pipeline is set up

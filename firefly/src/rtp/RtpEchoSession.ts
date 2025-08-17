@@ -8,6 +8,7 @@ import {
   RTP_CONSTANTS,
   BUFFER_CONSTANTS 
 } from '../constants';
+import { setTimeout as delay } from 'timers/promises';
 
 // Use the type from the imported namespace
 type RtpPacket = InstanceType<typeof rtpJsPackets.RtpPacket>;
@@ -180,7 +181,7 @@ export class RtpEchoSession extends RtpSession {
     // Send packets with 20ms intervals
     for (let i = 0; i < totalPackets; i++) {
       this.sendRtpPacket(silencePayload, i === 0); // Marker bit on first packet
-      await new Promise(resolve => setTimeout(resolve, BUFFER_CONSTANTS.SILENCE_PACKET_INTERVAL));
+      await delay(BUFFER_CONSTANTS.SILENCE_PACKET_INTERVAL);
     }
   }
 

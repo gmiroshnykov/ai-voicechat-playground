@@ -3,6 +3,32 @@ import { createLogger, Logger } from '../utils/logger';
 import Mrf, { MediaServer, Endpoint } from 'drachtio-fsmrf';
 import Srf from 'drachtio-srf';
 import { SrfRequest, SrfResponse } from 'drachtio-srf';
+import { AudioStreamServer } from '../audio/AudioStreamServer';
+import path from 'path';
+
+// Type augmentation for drachtio-fsmrf Endpoint to include audio fork methods
+declare module 'drachtio-fsmrf' {
+  interface Endpoint {
+    forkAudioStart(options: {
+      wsUrl: string;
+      mixType?: 'mono' | 'mixed' | 'stereo';
+      sampling?: string;
+      bugname?: string;
+      metadata?: any;
+      bidirectionalAudio?: {
+        enabled?: string;
+        streaming?: string;
+        sampleRate?: string;
+      };
+    }): Promise<void>;
+    
+    forkAudioStop(bugname?: string, metadata?: any): Promise<void>;
+    
+    forkAudioSendText(bugname?: string, metadata?: any): Promise<void>;
+    
+    api(command: string, ...args: string[]): Promise<any>;
+  }
+}
 
 export class DrachtioWelcomeHandler {
   private readonly mrf: Mrf;
@@ -65,10 +91,93 @@ export class DrachtioWelcomeHandler {
   }
 
   private async playWelcomeAudio(endpoint: Endpoint, logger: Logger): Promise<void> {
-    logger.info('Playing welcome tone');
-    await endpoint.execute('playback', 'tone_stream://%(2000,4000,440,480)');
-    logger.info('Welcome tone playback completed');
+    const callId = endpoint.uuid;
+    let audioServer: AudioStreamServer | undefined;
+    
+    logger.info('Starting per-call WebSocket audio streaming', { callId });
+
+    try {
+      // Create dedicated WebSocket server for this call
+      audioServer = new AudioStreamServer({
+        host: '0.0.0.0',
+        port: 0, // Let OS assign random port
+        callId
+      });
+
+      // Start the server and get the assigned port
+      await audioServer.start();
+      const port = audioServer.getPort();
+      
+      if (!port) {
+        throw new Error('Failed to get assigned port from audio server');
+      }
+
+      logger.info('Per-call audio server started', { port, callId });
+
+      // Audio operations will handle their own timing through self-contained blocking
+
+      // Use POD_IP for direct pod communication, fallback to localhost for development
+      const podIp = process.env.POD_IP || 'localhost';
+      const wsUrl = `ws://${podIp}:${port}/audio`;
+      
+      logger.info('Starting audio fork', { wsUrl, callId });
+      
+      // Use direct FreeSWITCH API to start audio fork with bidirectional audio
+      // Syntax: uuid_audio_fork <uuid> start <wss-url> <mono|mixed|stereo> <samplerate> [bugname] [metadata] [bidirectionalAudio_enabled] [bidirectionalAudio_stream_enabled] [bidirectionalAudio_stream_samplerate]
+      const forkCommand = `uuid_audio_fork ${endpoint.uuid} start ${wsUrl} mono 8000 welcome_audio_fork {} true true 8000`;
+      logger.info('Sending direct audio fork command', { forkCommand });
+      
+      await endpoint.api(forkCommand);
+      logger.info('Audio fork started successfully via direct API');
+
+      // Wait for FreeSWITCH to establish WebSocket connection
+      logger.info('Waiting for FreeSWITCH WebSocket connection');
+      await audioServer.waitForConnection();
+      logger.info('FreeSWITCH WebSocket connection established');
+      
+      // Start streaming audio once connected  
+      const audioFilePath = path.resolve(__dirname, '../../audio/welcome.pcm');
+      logger.info('Starting audio stream with 1 second silence buffer', { audioFilePath, callId });
+      
+      // Send 1 second of silence first to ensure audio path is fully established
+      logger.info('Sending 1 second of silence to establish audio path');
+      await audioServer.startSilenceStream(1000); // 1 second of silence
+      
+      logger.info('Starting welcome audio file playback');
+      await audioServer.startAudioStream(audioFilePath);
+
+      // Audio operations are now complete (each function blocks for its full duration)
+      logger.info('All audio operations completed');
+
+    } catch (error) {
+      logger.error('Error in per-call WebSocket audio streaming', { error, callId });
+    } finally {
+      try {
+        // Always stop the audio fork
+        await endpoint.api(`uuid_audio_fork ${endpoint.uuid} stop`);
+        logger.debug('Audio fork stopped via direct API');
+      } catch (stopError) {
+        logger.error('Error stopping audio fork', { 
+          error: stopError, 
+          callId
+        });
+      }
+
+      // Clean up the per-call server
+      if (audioServer) {
+        try {
+          await audioServer.stop();
+          logger.debug('Per-call audio server stopped', { callId });
+        } catch (stopError) {
+          logger.error('Error stopping per-call audio server', { 
+            error: stopError, 
+            callId 
+          });
+        }
+      }
+    }
   }
+
 
   public async shutdown(): Promise<void> {
     this.logger.debug('Shutting down DrachtioWelcomeHandler');
