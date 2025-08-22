@@ -4,8 +4,10 @@ import Mrf, { MediaServer, Endpoint } from 'drachtio-fsmrf';
 import Srf from 'drachtio-srf';
 import { SrfRequest, SrfResponse } from 'drachtio-srf';
 import { AudioStreamServer } from '../audio/AudioStreamServer';
+import { CallHandler } from './interfaces';
+import { CallContext } from './types';
 
-export class DrachtioEchoHandler {
+export class DrachtioEchoHandler implements CallHandler {
   private readonly mrf: Mrf;
   private readonly logger: Logger;
   private readonly config: AppConfig;
@@ -23,8 +25,8 @@ export class DrachtioEchoHandler {
     this.logger.info('Connected to FreeSWITCH media server for echo');
   }
 
-  public async handleEchoCall(req: SrfRequest, res: SrfResponse, callId: string): Promise<void> {
-    const callLogger = this.logger.child({ callId });
+  public async handleCall(req: SrfRequest, res: SrfResponse, callContext: CallContext): Promise<void> {
+    const callLogger = this.logger.child({ callId: callContext.callId });
 
     try {
       callLogger.info('Handling echo call with drachtio-fsmrf');

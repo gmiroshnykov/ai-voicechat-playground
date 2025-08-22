@@ -4,6 +4,8 @@ import Mrf, { MediaServer, Endpoint } from 'drachtio-fsmrf';
 import Srf from 'drachtio-srf';
 import { SrfRequest, SrfResponse } from 'drachtio-srf';
 import { AudioStreamServer } from '../audio/AudioStreamServer';
+import { CallHandler } from './interfaces';
+import { CallContext } from './types';
 import path from 'path';
 
 // Type augmentation for drachtio-fsmrf Endpoint to include audio fork methods
@@ -30,7 +32,7 @@ declare module 'drachtio-fsmrf' {
   }
 }
 
-export class DrachtioWelcomeHandler {
+export class DrachtioWelcomeHandler implements CallHandler {
   private readonly mrf: Mrf;
   private readonly logger: Logger;
   private readonly config: AppConfig;
@@ -48,8 +50,8 @@ export class DrachtioWelcomeHandler {
     this.logger.info('Connected to FreeSWITCH media server');
   }
 
-  public async handleWelcomeCall(req: SrfRequest, res: SrfResponse, callId: string): Promise<void> {
-    const callLogger = this.logger.child({ callId });
+  public async handleCall(req: SrfRequest, res: SrfResponse, callContext: CallContext): Promise<void> {
+    const callLogger = this.logger.child({ callId: callContext.callId });
 
     try {
       callLogger.info('Handling welcome call with drachtio-fsmrf');

@@ -5,9 +5,10 @@ import Srf from 'drachtio-srf';
 import { SrfRequest, SrfResponse, Dialog } from 'drachtio-srf';
 import { AudioStreamServer } from '../audio/AudioStreamServer';
 import { OpenAIBridgeConnection } from '../audio/OpenAIBridgeConnection';
+import { CallHandler } from './interfaces';
 import { CallContext } from './types';
 
-export class DrachtioOpenAIHandler {
+export class DrachtioOpenAIHandler implements CallHandler {
   private readonly mrf: Mrf;
   private readonly logger: Logger;
   private readonly config: AppConfig;
@@ -25,7 +26,7 @@ export class DrachtioOpenAIHandler {
     this.logger.info('Connected to FreeSWITCH media server for OpenAI chat');
   }
 
-  public async handleChatCall(req: SrfRequest, res: SrfResponse, callContext: CallContext): Promise<void> {
+  public async handleCall(req: SrfRequest, res: SrfResponse, callContext: CallContext): Promise<void> {
     const callLogger = this.logger.child({ callId: callContext.callId });
 
     try {
