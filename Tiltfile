@@ -21,6 +21,13 @@ docker_build(
     ]
 )
 
+# Build custom FreeSWITCH image with secure password handling
+docker_build(
+    'ai-voicechat-playground/freeswitch:0.9.4',
+    context='./freeswitch',
+    dockerfile='./freeswitch/Dockerfile'
+)
+
 # Set resource dependencies
 k8s_resource('firefly', resource_deps=['drachtio', 'freeswitch'])
 

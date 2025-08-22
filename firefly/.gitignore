@@ -8,3 +8,6 @@ dist/
 *.d.ts.map
 coverage/
 .nyc_output/
+
+# Local configuration overrides
+config/config.yaml

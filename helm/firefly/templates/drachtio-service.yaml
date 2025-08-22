@@ -8,19 +8,19 @@ metadata:
     {{ $key }}: {{ $value | quote }}
     {{- end }}
 spec:
-  clusterIP: {{ .Values.drachtioServiceClusterIP }}  # Headless service for StatefulSet
+  clusterIP: None  # Headless service for StatefulSet
   selector:
     app: drachtio
   ports:
   - name: control
-    port: {{ .Values.drachtioPort }}
-    targetPort: {{ .Values.drachtioPort }}
+    port: 9022
+    targetPort: 9022
     protocol: TCP
   - name: sip-udp
-    port: {{ .Values.drachtioSipPort }}
-    targetPort: {{ .Values.drachtioSipPort }}
+    port: 5060
+    targetPort: 5060
     protocol: UDP
   - name: sip-tcp
-    port: {{ .Values.drachtioSipPort }}
-    targetPort: {{ .Values.drachtioSipPort }}
+    port: 5060
+    targetPort: 5060
     protocol: TCP

@@ -58,6 +58,7 @@ export type SessionType = 'echo' | 'chat' | 'welcome';
 
 export interface RoutingConfig {
   defaultRoute: SessionType;
+  ringDelayMs: number;
 }
 
 export interface MediaServerConfig {
@@ -87,7 +88,6 @@ export interface AppConfig {
   routing: RoutingConfig;
   mediaServer: MediaServerConfig;
   environment: string;
-  logLevel: "trace" | "debug" | "info" | "warn" | "error";
 }
 
 export interface EnvironmentVariables {
@@ -129,6 +129,7 @@ export interface EnvironmentVariables {
   RECORDING_FILENAME_PREFIX?: string;
   
   DEFAULT_ROUTE?: string;
+  RING_DELAY_MS?: string;
   
   MEDIA_SERVER_ADDRESS?: string;
   MEDIA_SERVER_PORT?: string;

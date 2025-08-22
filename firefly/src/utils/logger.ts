@@ -1,5 +1,3 @@
-import { config } from '../config';
-
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
@@ -27,9 +25,9 @@ class ConsoleLogger implements Logger {
   private context: LogContext;
   private minLevel: number;
 
-  constructor(context: LogContext = {}) {
+  constructor(logLevel: LogLevel = 'info', context: LogContext = {}) {
     this.context = context;
-    this.minLevel = LOG_LEVELS[config.logLevel];
+    this.minLevel = LOG_LEVELS[logLevel];
   }
 
   private shouldLog(level: LogLevel): boolean {
@@ -85,12 +83,30 @@ class ConsoleLogger implements Logger {
   }
 
   child(context: LogContext): Logger {
-    return new ConsoleLogger({ ...this.context, ...context });
+    // Need to pass the same log level to child logger
+    // We'll store it as a property
+    return new ConsoleLogger(this.logLevel, { ...this.context, ...context });
+  }
+  
+  private get logLevel(): LogLevel {
+    // Reverse lookup the log level from minLevel
+    for (const [level, value] of Object.entries(LOG_LEVELS)) {
+      if (value === this.minLevel) {
+        return level as LogLevel;
+      }
+    }
+    return 'info'; // fallback
   }
 }
 
-// Export singleton logger instance
-export const logger: Logger = new ConsoleLogger();
+// Export mutable logger instance that will be initialized later
+export let logger: Logger;
+
+// Export function to initialize the logger
+export function initializeLogger(logLevel: LogLevel): Logger {
+  logger = new ConsoleLogger(logLevel);
+  return logger;
+}
 
 // Export function to create child loggers with specific context
 export function createLogger(context: LogContext): Logger {

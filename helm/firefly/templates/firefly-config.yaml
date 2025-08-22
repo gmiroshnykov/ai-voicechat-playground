@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: firefly-config
+  labels:
+    {{- range $key, $value := .Values.globalLabels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+data:
+  config.yaml: |
+    environment: {{ .Values.environment | default "production" }}
+
+    sip:
+      inbound:
+        enabled: {{ .Values.sipInbound.enabled }}
+        port: {{ .Values.sipInbound.port }}
+      outbound:
+        provider: {{ .Values.sipOutbound.provider | quote }}
+        domain: {{ .Values.sipOutbound.domain | quote }}
+        username: {{ .Values.sipOutbound.username | quote }}
+        password: ""
+        port: {{ .Values.sipOutbound.port }}
+        proxyAddress: {{ .Values.sipOutbound.proxy | quote }}
+
+    routing:
+      defaultRoute: {{ .Values.defaultRoute | quote }}
+      ringDelayMs: {{ .Values.ringDelayMs }}
+
+    audio:
+      testTempo: {{ .Values.audioTestTempo }}
+      aiTempo: {{ .Values.audioAiTempo }}
+
+    recording:
+      enabled: {{ .Values.recordingEnabled }}
+      format: wav
+      directory: /app/recordings
+      channelMode: both
+      includeMetadata: true
+      filenamePrefix: call
+
+    transcription:
+      enabled: {{ .Values.transcriptionEnabled }}
+      {{- if .Values.transcriptionModel }}
+      model: {{ .Values.transcriptionModel | quote }}
+      {{- end }}
+      displayToConsole: {{ .Values.transcriptionDisplayToConsole }}
+
+    openai:
+      enabled: {{ .Values.openaiEnabled }}
+      apiKey: ""
+
+    drachtio:
+      host: {{ .Values.drachtioHost | quote }}
+      port: 9022
+      secret: ""
+      sipPort: 5060
+
+    mediaServer:
+      address: {{ .Values.mediaServerAddress | quote }}
+      port: {{ .Values.mediaServerPort }}
+      secret: ""
+      enabled: {{ .Values.mediaServerEnabled }}

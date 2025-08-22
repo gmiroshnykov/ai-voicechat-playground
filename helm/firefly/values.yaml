@@ -6,37 +6,29 @@
 globalLabels:
   app.kubernetes.io/name: firefly
   app.kubernetes.io/version: latest
-hostNetwork: true
 
 # Drachtio SIP server configuration
 drachtioImageRepository: drachtio/drachtio-server
 drachtioImageTag: "0.9.3"
 drachtioImagePullPolicy: IfNotPresent
 drachtioHost: localhost
-drachtioPort: 9022
-drachtioSipPort: 5062
 drachtioSecret: ""  # Set in values.local.yaml
 drachtioLogLevel: info
 
-# Homer SIP capture (optional)
-homerEnabled: true
-homerHost: "127.0.0.1"
-homerPort: 9060
-homerId: "10"
 
 # Drachtio resource limits
-drachtioResourcesRequestsMemory: "128Mi"
-drachtioResourcesRequestsCpu: "100m"
-drachtioResourcesLimitsMemory: "256Mi"
-drachtioResourcesLimitsCpu: "200m"
+drachtioResourcesMemoryRequests: "128Mi"
+drachtioResourcesCpuRequests: "100m"
+drachtioResourcesMemoryLimits: "256Mi"
+drachtioResourcesCpuLimits: "200m"
 
 # FreeSWITCH media server configuration
 freeswitchEnabled: true
-freeswitchImageRepository: drachtio/drachtio-freeswitch-mrf
+freeswitchImageRepository: ai-voicechat-playground/freeswitch
 freeswitchImageTag: "0.9.4"
 freeswitchImagePullPolicy: IfNotPresent
 freeswitchEventSocketPort: 8021
-freeswitchSecret: "ClueCon"
+freeswitchSecret: ""  # Set in values.local.yaml
 
 # FreeSWITCH resource limits
 freeswitchResourcesRequestsMemory: "128Mi"
@@ -50,17 +42,11 @@ fireflyImageTag: latest
 fireflyImagePullPolicy: IfNotPresent
 
 # Firefly resource limits
-fireflyResourcesRequestsMemory: "256Mi"
-fireflyResourcesRequestsCpu: "250m"
-fireflyResourcesLimitsMemory: "512Mi"
-fireflyResourcesLimitsCpu: "500m"
+fireflyResourcesMemoryRequests: "256Mi"
+fireflyResourcesCpuRequests: "250m"
+fireflyResourcesMemoryLimits: "512Mi"
+fireflyResourcesCpuLimits: "500m"
 
-# Firefly health checks
-healthCheckEnabled: true
-healthCheckDrachtioPort: 9022
-healthCheckInitialDelaySeconds: 30
-healthCheckPeriodSeconds: 10
-healthCheckTimeoutSeconds: 5
 
 # SIP outbound registration configuration
 sipOutbound:
@@ -79,17 +65,14 @@ sipInbound:
 
 # Call recording configuration
 recordingEnabled: true
-recordingPath: /app/recordings
 
 # Persistent volume for recordings
-persistenceEnabled: true
 persistenceStorageClass: ""
 persistenceAccessMode: ReadWriteOnce
 persistenceSize: 5Gi
 
 # Transcription configuration
 transcriptionEnabled: true
-transcriptionModel: gpt-4o-mini-transcribe
 transcriptionDisplayToConsole: true
 
 # Audio configuration
@@ -105,52 +88,19 @@ openaiApiKey: ""  # Set in values.local.yaml
 
 # Routing configuration
 defaultRoute: welcome  # Options: echo, chat, welcome
+ringDelayMs: 3000  # Ring delay in milliseconds (0-30000) for natural interaction
 
 # Media server configuration
 mediaServerAddress: "127.0.0.1"
 mediaServerPort: 8021
-mediaServerSecret: "ClueCon"
+mediaServerSecret: ""  # Set in values.local.yaml
 mediaServerEnabled: true
 
 # Welcome audio configuration
 welcomeAudioPath: "audio/welcome.aiff"  # Relative to firefly directory
 welcomeAudioFallbackToTone: true
 
-# Service configuration
-drachtioServiceType: ClusterIP
-drachtioServiceClusterIP: None  # Headless service for StatefulSet
 
-# Test configuration (for 'helm test' command)
-# Tests always use host networking to share network stack with main app
-tests:
-  privileged: false  # Set to true if tests need privileged access
-  logLevel: info
-  
-  # Test-specific environment variables
-  env: {}
-    # Add any test-specific environment variables here
-    # EXAMPLE_TEST_VAR: "test-value"
-  
-  # Resource limits for test execution
-  resources:
-    limits:
-      memory: 512Mi
-      cpu: 1000m
-    requests:
-      memory: 256Mi
-      cpu: 500m
-  
-  # Node selection for test execution (optional)
-  nodeSelector: {}
-  
-  # Tolerations for test pods (optional)
-  tolerations: []
-  
-  # Affinity rules for test pods (optional)
-  affinity: {}
 
-# Generic environment variables for application configuration
-# Usage: env.SOME_VAR: "value" gets mapped to SOME_VAR environment variable
-env:
-  NODE_ENV: development
-  LOG_LEVEL: debug
+# Configuration values for template generation
+environment: development

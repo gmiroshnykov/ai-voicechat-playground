@@ -20,53 +20,54 @@ spec:
         {{ $key }}: {{ $value | quote }}
         {{- end }}
     spec:
-      hostNetwork: {{ .Values.hostNetwork }}
+      hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: firefly
         image: {{ .Values.fireflyImageRepository }}:{{ .Values.fireflyImageTag }}
         imagePullPolicy: {{ .Values.fireflyImagePullPolicy }}
         command: ["node", "dist/index.js"]
+        args:
+          - --config
+          - /var/run/firefly-config/config.yaml
+          - --config
+          - /var/run/firefly-secrets/secrets.yaml
         env:
         - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        envFrom:
-        - configMapRef:
-            name: firefly-config
-        - secretRef:
-            name: firefly-secrets
         volumeMounts:
-        - name: recordings
-          mountPath: {{ .Values.recordingPath }}
+        - name: config
+          mountPath: /var/run/firefly-config
+          readOnly: true
+        - name: secrets
+          mountPath: /var/run/firefly-secrets
+          readOnly: true
         resources:
           requests:
-            memory: {{ .Values.fireflyResourcesRequestsMemory | quote }}
-            cpu: {{ .Values.fireflyResourcesRequestsCpu | quote }}
+            memory: {{ .Values.fireflyResourcesMemoryRequests | quote }}
+            cpu: {{ .Values.fireflyResourcesCpuRequests | quote }}
           limits:
-            memory: {{ .Values.fireflyResourcesLimitsMemory | quote }}
-            cpu: {{ .Values.fireflyResourcesLimitsCpu | quote }}
-        {{- if .Values.healthCheckEnabled }}
+            memory: {{ .Values.fireflyResourcesMemoryLimits | quote }}
+            cpu: {{ .Values.fireflyResourcesCpuLimits | quote }}
         # Health checks - TCP probe for drachtio connection
         livenessProbe:
           tcpSocket:
-            port: {{ .Values.healthCheckDrachtioPort }}
-          initialDelaySeconds: {{ .Values.healthCheckInitialDelaySeconds }}
-          periodSeconds: {{ .Values.healthCheckPeriodSeconds }}
-          timeoutSeconds: {{ .Values.healthCheckTimeoutSeconds }}
+            port: 9022
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
         readinessProbe:
           tcpSocket:
-            port: {{ .Values.healthCheckDrachtioPort }}
+            port: 9022
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
-        {{- end }}
       volumes:
-      - name: recordings
-        {{- if .Values.persistenceEnabled }}
-        persistentVolumeClaim:
-          claimName: firefly-recordings
-        {{- else }}
-        emptyDir: {}
-        {{- end }}
+      - name: config
+        configMap:
+          name: firefly-config
+      - name: secrets
+        secret:
+          secretName: firefly-secrets

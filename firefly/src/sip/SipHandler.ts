@@ -88,9 +88,9 @@ export class SipHandler {
         callLogger.info('Sending 180 Ringing response');
         res.send(180, 'Ringing');
 
-        // Let the phone ring for 3 seconds before answering
-        callLogger.info('Letting phone ring for 3 seconds');
-        await delay(3000);
+        // Let the phone ring before answering for more natural interaction
+        callLogger.info('Letting phone ring before answering', { delayMs: this.config.routing.ringDelayMs });
+        await delay(this.config.routing.ringDelayMs);
 
         await this.drachtioWelcomeHandler.handleWelcomeCall(req, res, callContext.callId);
         return;
@@ -104,9 +104,9 @@ export class SipHandler {
         callLogger.info('Sending 180 Ringing response');
         res.send(180, 'Ringing');
 
-        // Let the phone ring for 3 seconds before answering
-        callLogger.info('Letting phone ring for 3 seconds');
-        await delay(3000);
+        // Let the phone ring before answering for more natural interaction
+        callLogger.info('Letting phone ring before answering', { delayMs: this.config.routing.ringDelayMs });
+        await delay(this.config.routing.ringDelayMs);
 
         await this.drachtioEchoHandler.handleEchoCall(req, res, callContext.callId);
         return;
@@ -129,9 +129,9 @@ export class SipHandler {
         callLogger.info('Sending 180 Ringing response');
         res.send(180, 'Ringing');
 
-        // Let the phone ring for 3 seconds before answering
-        callLogger.info('Letting phone ring for 3 seconds');
-        await delay(3000);
+        // Let the phone ring before answering for more natural interaction
+        callLogger.info('Letting phone ring before answering', { delayMs: this.config.routing.ringDelayMs });
+        await delay(this.config.routing.ringDelayMs);
 
         try {
           await this.drachtioOpenAIHandler.handleChatCall(req, res, callContext);

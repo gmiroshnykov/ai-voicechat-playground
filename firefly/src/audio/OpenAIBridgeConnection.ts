@@ -109,7 +109,8 @@ export class OpenAIBridgeConnection extends EventEmitter {
       transport: 'websocket',
       config: {
         inputAudioFormat: audioFormat,
-        outputAudioFormat: audioFormat
+        outputAudioFormat: audioFormat,
+        inputAudioTranscription: { model: this.config.transcription.model }
       }
     });
 
@@ -125,7 +126,7 @@ export class OpenAIBridgeConnection extends EventEmitter {
     this.isConnectedToOpenAI = true;
     this.logger.info('Connected to OpenAI Realtime API successfully');
 
-    // Send initial conversation item to start the conversation
+    // Send initial conversation item to make AI greet the caller first
     this.realtimeSession.transport.sendEvent({
       type: 'conversation.item.create',
       item: {
@@ -133,12 +134,12 @@ export class OpenAIBridgeConnection extends EventEmitter {
         role: 'user',
         content: [{
           type: 'input_text',
-          text: 'Hello! I\'m calling in.'
+          text: 'Привіт! Будь ласка, привітайся українською мовою та запитай як ти можеш допомогти.'
         }]
       }
     });
 
-    // Create initial response
+    // Create initial response to make AI speak
     this.realtimeSession.transport.sendEvent({
       type: 'response.create'
     });
@@ -194,8 +195,12 @@ export class OpenAIBridgeConnection extends EventEmitter {
         this.handleSpeechStarted();
       } else if (event.type === 'input_audio_buffer.speech_stopped') {
         this.handleSpeechStopped();
-      } else if (event.type === 'conversation.item.created') {
-        this.handleConversationItemCreated(event);
+      } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
+        this.handleInputAudioTranscriptionCompleted(event);
+      } else if (event.type === 'conversation.item.input_audio_transcription.delta') {
+        this.handleInputAudioTranscriptionDelta(event);
+      } else if (event.type === 'response.audio_transcript.done') {
+        this.handleAIAudioTranscriptDone(event);
       } else if (event.type === 'error') {
         if (event.error) {
           this.logger.error('OpenAI transport error', event.error);
@@ -263,23 +268,26 @@ export class OpenAIBridgeConnection extends EventEmitter {
 
   private handleSpeechStopped(): void {
     this.logger.debug('User speech stopped');
-    // Note: The actual transcription will come via conversation.item.created events
+    // Note: The actual transcription will come via input_audio_transcription events
   }
 
-  private handleConversationItemCreated(event: any): void {
-    const item = event.item;
+  private handleInputAudioTranscriptionCompleted(event: any): void {
+    if (event.transcript && event.transcript.trim()) {
+      this.transcriptionManager.addCompletedTranscript('caller', event.transcript);
+    }
+  }
 
-    if (item && item.type === 'message' && item.role === 'user') {
-      // Check if this is a transcribed user message
-      if (item.content && Array.isArray(item.content)) {
-        for (const content of item.content) {
-          if (content.type === 'input_text' && content.text) {
-            this.transcriptionManager.addCompletedTranscript('caller', content.text);
-          } else if (content.type === 'input_audio' && content.transcript) {
-            this.transcriptionManager.addCompletedTranscript('caller', content.transcript);
-          }
-        }
-      }
+  private handleInputAudioTranscriptionDelta(event: any): void {
+    // For now, we only handle completed transcriptions
+    // Could add real-time partial transcription display later if needed
+    if (event.delta) {
+      this.logger.debug('Received transcription delta:', event.delta);
+    }
+  }
+
+  private handleAIAudioTranscriptDone(event: any): void {
+    if (event.transcript && event.transcript.trim() && event.transcript !== '\n') {
+      this.transcriptionManager.addCompletedTranscript('ai', event.transcript);
     }
   }
 

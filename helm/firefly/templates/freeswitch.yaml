@@ -26,7 +26,7 @@ spec:
         {{ $key }}: {{ $value | quote }}
         {{- end }}
     spec:
-      hostNetwork: {{ .Values.hostNetwork }}
+      hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: freeswitch
@@ -36,19 +36,17 @@ spec:
         - freeswitch
         - --event-socket-port
         - {{ .Values.freeswitchEventSocketPort | quote }}
-        - --password
-        - {{ .Values.freeswitchSecret | quote }}
         - -nonat
         - -nf
         env:
-        - name: FREESWITCH_EVENT_SOCKET_PORT
-          value: {{ .Values.freeswitchEventSocketPort | quote }}
-        - name: FREESWITCH_SECRET
-          value: {{ .Values.freeswitchSecret | quote }}
         - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        volumeMounts:
+        - name: freeswitch-secret
+          mountPath: /var/run/freeswitch-secrets
+          readOnly: true
         ports:
         - containerPort: {{ .Values.freeswitchEventSocketPort }}
           name: event-socket
@@ -72,4 +70,8 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
+      volumes:
+      - name: freeswitch-secret
+        secret:
+          secretName: freeswitch-secret
 {{- end }}

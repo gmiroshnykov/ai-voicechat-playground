@@ -1,10 +1,11 @@
 import Srf from 'drachtio-srf';
 import { Command } from 'commander';
-import { config } from './config';
+import { initializeConfig } from './config';
+import type { AppConfig } from './config';
 import { SipRegistrar } from './sip/SipRegistrar';
 import { SipInboundRegistrar } from './sip/SipInboundRegistrar';
 import { SipHandler } from './sip/SipHandler';
-import { logger } from './utils/logger';
+import { initializeLogger } from './utils/logger';
 
 // Parse CLI arguments
 const program = new Command();
@@ -12,7 +13,33 @@ program
   .name('firefly')
   .description('SIP service with OpenAI Realtime API integration')
   .version('1.0.0')
+  .option('-c, --config <paths...>', 'Configuration file paths (can be used multiple times)')
+  .option('--environment <env>', 'Application environment', 'development')
+  .option('--log-level <level>', 'Logging level (trace, debug, info, warn, error)')
+  .option('--sip-provider <provider>', 'SIP outbound provider (kyivstar, disabled)')
+  .option('--sip-inbound-enabled', 'Enable SIP inbound registration')
+  .option('--sip-inbound-port <port>', 'SIP inbound port', parseInt)
+  .option('--default-route <route>', 'Default call route (echo, chat, welcome)')
+  .option('--ring-delay <ms>', 'Ring delay in milliseconds', parseInt)
+  .option('--openai-enabled', 'Enable OpenAI integration')
+  .option('--recording-enabled', 'Enable call recording')
+  .option('--transcription-enabled', 'Enable transcription')
+  .option('--drachtio-host <host>', 'Drachtio server host')
+  .option('--drachtio-port <port>', 'Drachtio server port', parseInt)
+  .option('--media-server-host <host>', 'FreeSWITCH media server host')
+  .option('--media-server-port <port>', 'FreeSWITCH media server port', parseInt)
+  .addHelpText('after', `
+Examples:
+  $ firefly --help
+  $ firefly --log-level debug --ring-delay 2000
+  $ firefly --config ./custom-config.yaml --openai-enabled
+  $ firefly --sip-provider kyivstar --default-route chat`)
   .parse();
+
+// Load configuration and initialize logger based on CLI arguments
+const options = program.opts();
+const logger = initializeLogger(options.logLevel || 'info');
+const config: AppConfig = initializeConfig(options.config);
 
 // Create main components
 const srf = new Srf();
@@ -25,7 +52,6 @@ async function startApplication(): Promise<void> {
     environment: config.environment,
     sipOutboundProvider: config.sipOutbound.provider,
     sipInboundEnabled: config.sipInbound.enabled,
-    logLevel: config.logLevel,
     defaultRoute: config.routing.defaultRoute
   });
 

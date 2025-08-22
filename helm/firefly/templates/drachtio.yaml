@@ -25,7 +25,7 @@ spec:
         {{ $key }}: {{ $value | quote }}
         {{- end }}
     spec:
-      hostNetwork: {{ .Values.hostNetwork }}
+      hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: drachtio
@@ -33,25 +33,20 @@ spec:
         imagePullPolicy: {{ .Values.drachtioImagePullPolicy }}
         command:
         - drachtio
-        - --contact
-        - "sip:*:$(DRACHTIO_SIP_PORT);transport=udp"
-        - --loglevel
-        - {{ .Values.drachtioLogLevel }}
-        {{- if .Values.homerEnabled }}
-        - --homer
-        - "{{ .Values.homerHost }}:{{ .Values.homerPort }}"
-        - --homer-id
-        - {{ .Values.homerId | quote }}
-        {{- end }}
-        envFrom:
-        - configMapRef:
-            name: firefly-config
-        - secretRef:
-            name: firefly-secrets
+        - --file
+        - /etc/drachtio/drachtio.conf.xml
+        volumeMounts:
+        - name: drachtio-secret
+          mountPath: /etc/drachtio
+          readOnly: true
         resources:
           requests:
-            memory: {{ .Values.drachtioResourcesRequestsMemory | quote }}
-            cpu: {{ .Values.drachtioResourcesRequestsCpu | quote }}
+            memory: {{ .Values.drachtioResourcesMemoryRequests | quote }}
+            cpu: {{ .Values.drachtioResourcesCpuRequests | quote }}
           limits:
-            memory: {{ .Values.drachtioResourcesLimitsMemory | quote }}
-            cpu: {{ .Values.drachtioResourcesLimitsCpu | quote }}
+            memory: {{ .Values.drachtioResourcesMemoryLimits | quote }}
+            cpu: {{ .Values.drachtioResourcesCpuLimits | quote }}
+      volumes:
+      - name: drachtio-secret
+        secret:
+          secretName: drachtio-secret

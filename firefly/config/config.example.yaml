@@ -1,0 +1,53 @@
+# Firefly Configuration Example
+# Copy this file to config.yaml and customize for your environment
+
+environment: development
+
+sip:
+  inbound:
+    enabled: true
+    port: 5062
+  outbound:
+    provider: disabled        # Options: disabled, kyivstar
+    domain: ""               # e.g., voip.kyivstar.ua
+    username: ""             # Your SIP username
+    password: ""             # Your SIP password (or use env var)
+    port: 5060
+    proxyAddress: ""         # Optional SIP proxy
+
+routing:
+  defaultRoute: welcome      # Options: echo, chat, welcome
+  ringDelayMs: 3000         # Ring delay in milliseconds (0-30000)
+
+audio:
+  testTempo: 1.0            # Test audio tempo (0.1-5.0, 1.0 = normal)
+  aiTempo: 1.0              # AI audio tempo (0.1-5.0, 1.0 = normal)
+
+recording:
+  enabled: true
+  format: wav               # Options: wav, raw
+  directory: ./recordings
+  channelMode: both         # Options: mono, stereo, both
+  includeMetadata: true
+  filenamePrefix: call
+
+transcription:
+  enabled: true
+  model: gpt-4o-mini-transcribe
+  displayToConsole: true
+
+openai:
+  enabled: false            # Set to true to enable OpenAI integration
+  apiKey: ""               # Your OpenAI API key (or use env var)
+
+drachtio:
+  host: 127.0.0.1          # Drachtio server host
+  port: 9022               # Drachtio server port
+  secret: ""               # Drachtio secret (set in secrets file)
+  sipPort: 5060            # Drachtio SIP port
+
+mediaServer:
+  address: 127.0.0.1       # FreeSWITCH media server host
+  port: 8021               # FreeSWITCH ESL port
+  secret: ""               # FreeSWITCH secret (set in secrets file)
+  enabled: true

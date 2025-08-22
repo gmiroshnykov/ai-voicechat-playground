@@ -8,17 +8,13 @@
     "start": "npm run build && node dist/index.js",
     "dev": "npm run build && node dist/index.js",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "test": "npm run build && npm run test:run",
-    "test:run": "node --test 'dist/test/**/*.test.js'",
-    "test:audio": "npm run build && node dist/test/runAudioTest.js"
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0",
   "type": "commonjs",
   "devDependencies": {
     "@tsconfig/node20": "^20.1.6",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.10",
     "@types/sdp-transform": "^2.4.10",
     "@types/ws": "^8.5.10",
@@ -26,11 +22,15 @@
   },
   "dependencies": {
     "@openai/agents": "^0.0.10",
+    "@types/convict": "^6.1.6",
     "commander": "^14.0.0",
+    "convict": "^6.2.4",
+    "convict-format-with-validator": "^6.2.0",
     "drachtio-fsmrf": "^4.1.2",
     "drachtio-mw-digest-auth": "^0.3.3",
     "drachtio-mw-registration-parser": "^0.1.2",
     "drachtio-srf": "^5.0.10",
+    "js-yaml": "^4.1.0",
     "sdp-transform": "^2.15.0",
     "ws": "^8.17.1"
   }

@@ -4,4 +4,5 @@
 - **Avoid generic try/catch blocks** that only log errors. Either add meaningful context or let them bubble up.
 - **Prefer enums/string literals over boolean variables** for configuration (e.g., `SIP_OUTBOUND_PROVIDER="kyivstar"` instead of `USE_KYIVSTAR=true`).
 - Use context7 when looking up API documentation.
-- Never add an "any" type without explicit permission
+- Make sure all TypeScript code is properly covered by types.
+- Linphone logs are available at `~/Library/Application Support/linphone/logs/linphone1.log`, but the are quite large, so if you need to inspect them - better `tail` them in a subtask.

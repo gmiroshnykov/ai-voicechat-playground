@@ -48,7 +48,7 @@ The main experimental VoIP service - TypeScript-based SIP server with built-in r
 ### Drachtio SIP Server
 High-performance SIP server handling protocol operations:
 - SIP message parsing and routing
-- Authentication and registration management  
+- Authentication and registration management
 - Media negotiation and session control
 - Managed via Kubernetes with Helm
 
@@ -105,7 +105,7 @@ ai-voicechat-playground/
 
 **Call Routing:**
 - **Named Routes**: Call `sip:chat@domain`, `sip:welcome@domain`, `sip:echo@domain`
-- **Default Route**: External calls (phone numbers) route to configurable default (welcome/echo/chat)  
+- **Default Route**: External calls (phone numbers) route to configurable default (welcome/echo/chat)
 - **Route Types**:
   - `chat` - OpenAI Realtime API conversations (requires OpenAI API key + `OPENAI_ENABLED=true`)
   - `echo` - Audio loopback testing via FreeSWITCH for debugging codec/media issues
@@ -117,7 +117,6 @@ ai-voicechat-playground/
 ## Documentation
 
 - **[Firefly Guide](firefly/README.md)** - Main VoIP service with SIP registrar and OpenAI integration
-- **[Audio Files Guide](audio/README.md)** - Test audio specifications
 - **[DESIGN.md](DESIGN.md)** - System architecture and design decisions
 
 ## Development
@@ -135,7 +134,7 @@ This project implements a complete SIP-to-AI bridge with both direct registratio
 - ✅ **Direct SIP registration** accepting connections from standard SIP clients
 - ✅ **Basic PSTN-to-AI bridging** with personal VoIP provider testing
 - ✅ **Professional media handling** via FreeSWITCH with enterprise-grade telephony features
-- ✅ **Call recording and metadata extraction** 
+- ✅ **Call recording and metadata extraction**
 - ✅ **Multi-provider architecture** supporting direct, Kyivstar, and external modes
 - ✅ **Docker deployment** with service orchestration
 - ✅ **Kubernetes deployment** with Helm charts and Tilt integration
